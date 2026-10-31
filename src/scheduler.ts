@@ -6,7 +6,6 @@ export const SOURCE_TIMEOUT_MS = 8_000;
 export const INVOCATION_WALL_BUDGET_MS = 16_000;
 export const LEASE_MS = 60_000;
 export const MAX_FEED_BYTES = 128 * 1024;
-export const MAX_NEWS_ITEMS = 40;
 
 // Bound retry interval to [5 minutes, 6 hours]; deterministic per-source jitter
 // spreads retries without persisting new scheduling state.
