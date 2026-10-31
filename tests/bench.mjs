@@ -1,5 +1,5 @@
 import { Miniflare } from "miniflare";
-const mf=new Miniflare({modules:true,scriptPath:"dist/bench.mjs",compatibilityDate:"2026-10-01",cf:false});
+const mf=new Miniflare({modules:true,scriptPath:"dist/bench.mjs",compatibilityDate:"2026-08-06",cf:false});
 try{
  for(const count of [5,40]){
    const r=await mf.dispatchFetch("https://example.com/bench?count="+count);
