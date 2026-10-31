@@ -111,7 +111,7 @@ Cloudflare 官方实时依据：
 
 | 项目 | 状态 |
 | --- | --- |
-| GitHub CI / canary dry-run | 待记录实际 PR run |
+| GitHub CI / canary dry-run | **通过**：[PR #7 Run 41222649050](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41222649050)，9/9 T1、12/12 workerd+D1 T3、4/4 Canary 安全检查、两份 Wrangler dry-run、Mira Gate 全绿 |
 | Cloudflare 账号确认为 Free | **阻塞：Billing Read 403** |
 | 隔离 Worker / D1 创建 | **未执行** |
 | 真实 Cron / 外网 RSS / D1 租约 | **未执行** |
