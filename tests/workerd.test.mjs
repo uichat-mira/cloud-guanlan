@@ -75,7 +75,7 @@ test("oversized feed is rejected; no partial write",async()=>{
  await withWorker(async()=>new Response(rss(1),{headers:{"content-length":"200000"}}),async({mf,db})=>{
   await seed(db);
   await (await mf.getWorker()).scheduled({cron:"*/5 * * * *",scheduledTime:now});
-  assert.match((await db.prepare("SELECT last_error FROM poc_sources WHERE id='feed1'").first()).last_error,/oversized/);
+  assert.match((await db.prepare("SELECT last_error FROM poc_sources WHERE id='feed1'").first()).last_error,/feed_too_large/);
   assert.equal((await db.prepare("SELECT count(*) AS n FROM poc_news").first()).n,0);
  });
 });
