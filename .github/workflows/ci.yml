@@ -1,0 +1,67 @@
+name: Guanlan CI
+
+on:
+  pull_request:
+  push:
+    branches: [dev, test, prod]
+
+permissions:
+  contents: read
+
+jobs:
+  validation:
+    name: Repository Contract
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: ''
+      - name: Verify docs or real runtime checks
+        shell: bash
+        run: bash scripts/check.sh
+
+  branch-policy:
+    name: Branch Policy
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Enforce Mira environment flow
+        shell: bash
+        env:
+          HEAD_BRANCH: ${{ github.head_ref }}
+          BASE_BRANCH: ${{ github.base_ref }}
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          test "$HEAD_REPO" = "$BASE_REPO" || { echo "Cross-repository PRs require a separate reviewed exception." >&2; exit 1; }
+          case "${HEAD_BRANCH}:${BASE_BRANCH}" in
+            feat/*:dev|feature/*:dev|fix/*:dev|hotfix/*:dev|refactor/*:dev|perf/*:dev|docs/*:dev|test/*:dev|chore/*:dev|dev:test|test:prod|hotfix/*:test|hotfix/*:prod)
+              echo "Allowed promotion: ${HEAD_BRANCH} -> ${BASE_BRANCH}" ;;
+            *)
+              echo "Forbidden promotion: ${HEAD_BRANCH} -> ${BASE_BRANCH}" >&2
+              exit 1 ;;
+          esac
+
+  mira-gate:
+    name: Mira Gate
+    if: ${{ always() }}
+    needs: [validation, branch-policy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require contract and branch policy
+        shell: bash
+        env:
+          CONTRACT_RESULT: ${{ needs.validation.result }}
+          BRANCH_RESULT: ${{ needs.branch-policy.result }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          test "$CONTRACT_RESULT" = success
+          if [[ "$EVENT_NAME" == pull_request ]]; then
+            test "$BRANCH_RESULT" = success
+          else
+            test "$BRANCH_RESULT" = skipped
+          fi
