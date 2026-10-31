@@ -45,7 +45,7 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-当前有产品设计以及**待合入的工程基建方案**，还没有 Worker 业务代码、API、D1 数据库迁移或上线部署；仓库文档与 CI 脚手架不能替代运行验收。
+当前有产品设计以及基础工程 CI / 付费 Worker 派工配置，但还没有 Worker 业务代码、API、D1 数据库迁移或上线部署；仓库文档与 CI 脚手架不能替代运行验收。
 
 - [仓库工程约束](AGENTS.md)
 - [Issue 任务卡与付费 OpenCode Worker 使用说明](docs/engineering/work-items.md)
