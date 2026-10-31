@@ -4,7 +4,8 @@ import {readFile} from "node:fs/promises";
 import {Miniflare} from "miniflare";
 import {rss} from "./fixtures.mjs";
 
-const now=Date.parse("2026-10-31T01:00:00.000Z");
+const now=Date.now();
+const overdue=new Date(now-60_000).toISOString();
 const CRON="*/5 * * * *";
 async function withWorker(fetcher,run){
   const mf=new Miniflare({
@@ -21,7 +22,7 @@ async function withWorker(fetcher,run){
     await run({mf,db,worker:await mf.getWorker()});
   } finally {await mf.dispose();}
 }
-async function seed(db,id="feed-a",due="2026-10-31T00:00:00.000Z",hours=1){
+async function seed(db,id="feed-a",due=overdue,hours=1){
   await db.prepare("INSERT INTO poc_sources (id,url,interval_hours,due_at) VALUES (?,?,?,?)")
     .bind(id,"https://example.com/"+id+".xml",hours,due).run();
 }
@@ -72,6 +73,8 @@ test("upstream failure backs off while other source progresses; successful retry
     assert.equal((await db.prepare("SELECT last_status FROM poc_sources WHERE id='feed-b'").first()).last_status,"succeeded");
     await tick(worker,now+60_000); // neither is due
     assert.equal((await db.prepare("SELECT retry_count FROM poc_sources WHERE id='feed-a'").first()).retry_count,1);
+    // Making a source due is a D1 change; synthetic scheduledTime must not advance time.
+    await db.prepare("UPDATE poc_sources SET due_at=? WHERE id=?").bind(overdue,"feed-a").run();
     assert.equal((await tick(worker,now+400_000)).outcome,"ok");
     row=await db.prepare("SELECT retry_count,last_status FROM poc_sources WHERE id='feed-a'").first();
     assert.equal(row.retry_count,0);
@@ -92,6 +95,8 @@ test("expired lease can be reclaimed; stale holder may neither change source sta
     await seed(db);
     const first=tick(worker);
     await arrived;
+    // Simulate lease expiry in real D1; advancing scheduledTime is not a clock.
+    await db.prepare("UPDATE poc_sources SET lease_expires_at=? WHERE id=?").bind(overdue,"feed-a").run();
     const newer=await tick(worker,now+61_000);
     assert.equal(newer.outcome,"ok");
     release();
@@ -117,6 +122,8 @@ test("D1 commit failure is not misclassified as feed HTTP failure; transaction r
     assert.notEqual(row.lease_token,null,"original claim persists until timeout");
     assert.equal(row.retry_count,0);
     await db.prepare("DROP TRIGGER prevent_commit").run();
+    // A crashed worker is reclaimed when its actual lease expires.
+    await db.prepare("UPDATE poc_sources SET lease_expires_at=? WHERE id=?").bind(overdue,"feed-a").run();
     const outcome=await tick(worker,now+61_000);
     assert.equal(outcome.outcome,"ok");
     assert.equal((await count(db)).n,2);
@@ -146,15 +153,53 @@ test("oversized feed and malformed response fail safely, preserving next eligibl
 test("source interval remains hourly configurable regardless of five-minute wake",async()=>{
   let calls=0;
   await withWorker(async()=>{calls++;return new Response(rss(1));},async({db,worker})=>{
-    await seed(db,"feed-a","2026-10-31T00:00:00.000Z",3);
+    await seed(db,"feed-a",overdue,3);
     assert.equal((await tick(worker)).outcome,"ok");
     const first=await db.prepare("SELECT due_at FROM poc_sources WHERE id='feed-a'").first();
     assert(Date.parse(first.due_at)>=now+3*3_600_000);
-    assert(Date.parse(first.due_at)<now+3*3_600_000+2_000);
+    assert(Date.parse(first.due_at)<Date.now()+3*3_600_000+3_000);
     assert.equal((await tick(worker,now+2*3_600_000)).outcome,"ok");
     assert.equal(calls,1,"Cron does not override the configured source interval");
+    // Even a future scheduledTime cannot make a not-yet-due source eligible.
     assert.equal((await tick(worker,now+3*3_600_000+2_000)).outcome,"ok");
+    assert.equal(calls,1);
+    await db.prepare("UPDATE poc_sources SET due_at=? WHERE id=?").bind(overdue,"feed-a").run();
+    assert.equal((await tick(worker)).outcome,"ok");
     assert.equal(calls,2);
     assert.equal((await count(db)).n,1,"same news URL remains idempotent");
+  });
+});
+
+test("late-delivered Cron uses real execution time for leases and cannot be double-claimed",async()=>{
+  let entered;
+  const started=new Promise(resolve=>entered=resolve);
+  let release;
+  const held=new Promise(resolve=>release=resolve);
+  let calls=0;
+  await withWorker(async()=>{
+    calls++;
+    entered();
+    await held;
+    return new Response(rss(1));
+  },async({db,worker})=>{
+    await seed(db);
+    const scheduledYesterday=Date.now()-24*3_600_000;
+    const first=tick(worker,scheduledYesterday);
+    try{
+      await started;
+      const record=await db.prepare("SELECT lease_expires_at FROM poc_sources WHERE id='feed-a'").first();
+      assert(Date.parse(record.lease_expires_at)>=Date.now()+55_000,
+        "Lease expiration must be based on actual start, not yesterday's scheduled event");
+      const concurrent=await tick(worker,Date.now());
+      assert.equal(concurrent.outcome,"ok");
+      assert.equal(calls,1,"Second Cron must not re-fetch a source held by a delayed Cron");
+    }finally{
+      release();
+      await first;
+    }
+    const source=await db.prepare("SELECT last_status,due_at FROM poc_sources WHERE id='feed-a'").first();
+    assert.equal(source.last_status,"succeeded");
+    assert(Date.parse(source.due_at)>Date.now()+3_590_000,
+      "Success refresh interval must start at actual completion, not scheduled event time");
   });
 });
