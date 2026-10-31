@@ -8,7 +8,7 @@ export const NEWS_LIMIT_MAX = 50;
 /** Tool output is bounded before it enters MCP schemas. */
 export const NEWS_TITLE_MAX = 500;
 export const NEWS_SUMMARY_MAX = 2_000;
-export const NEWS_URL_MAX = 2_048;
+export const NEWS_URL_MAX = 4_096;
 export const NEWS_SOURCE_ID_MAX = 200;
 
 export const READ_ONLY_ANNOTATIONS = {
@@ -28,7 +28,7 @@ export const NEWS_INPUT_SCHEMA = z.object({
 });
 
 export const NEWS_ITEM_SCHEMA = z.object({
-  id: z.string().describe("Stable news URL identifier."),
+  id: z.string().describe("Stable SHA-256 identifier derived from the complete canonical article URL."),
   title: z.string(),
   summary: z.string(),
   url: z.string(),
