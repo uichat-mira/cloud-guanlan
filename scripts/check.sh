@@ -10,10 +10,7 @@ test -s LICENSE
 
 if [[ -f package.json ]]; then
   # No silent docs-only gate once runnable service code exists.
-  if [[ ! -f package-lock.json ]]; then
-    echo "::warning::GLN-001 POC has no committed lockfile yet; generating one for this CI invocation (NOT reproducible across future runs)."
-    npm install --package-lock-only --ignore-scripts --no-audit --no-fund
-  fi
+  test -f package-lock.json || { echo "Missing checked-in package-lock.json" >&2; exit 1; }
   command -v node >/dev/null
   command -v npm >/dev/null
   node --version
