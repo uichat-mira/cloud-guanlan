@@ -77,3 +77,26 @@ test("HTTP smoke refuses non-Cloudflare host without contacting it",()=>{
     assert.match(result.stderr,/isolated GLN-003 Worker HTTPS hostname/);
   }
 });
+
+test("metrics exporter rejects missing authorization and invalid measurement window",()=>{
+  const noToken=spawnSync(process.execPath,["scripts/gln003-metrics.mjs"],{
+    env:{...process.env,GLN003_ACCOUNT_ID:"",GLN003_DATABASE_ID:"",CLOUDFLARE_API_TOKEN:"",GLN003_FROM:"",GLN003_TO:""},
+    encoding:"utf8"
+  });
+  assert.notEqual(noToken.status,0);
+  assert.match(noToken.stderr,/Requires GLN003_ACCOUNT_ID/);
+  const badWindow=spawnSync(process.execPath,["scripts/gln003-metrics.mjs"],{
+    env:{
+      ...process.env,
+      GLN003_ACCOUNT_ID:"11111111111111111111111111111111",
+      GLN003_DATABASE_ID:"11111111-2222-3333-4444-555555555555",
+      CLOUDFLARE_API_TOKEN:"non-secret-test-placeholder",
+      GLN003_FROM:"2026-11-01T12:00:00Z",
+      GLN003_TO:"2026-11-01T11:00:00Z"
+    },
+    encoding:"utf8"
+  });
+  assert.notEqual(badWindow.status,0);
+  assert.match(badWindow.stderr,/Metrics window/);
+  assert.doesNotMatch(badWindow.stderr,/non-secret-test-placeholder/);
+});
