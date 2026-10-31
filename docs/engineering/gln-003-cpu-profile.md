@@ -40,4 +40,44 @@ npm run check
 
 ## 真实运行结果
 
-**待写入**：部署 commit、profile bundle Git SHA、9 次样本、CPU 分段结论、停机和恢复证明。若远程 Cron 无法及时触发，禁止把尚未发生的试验标为通过。
+### 2026-10-31 18:25–18:33 UTC · 已完成 9 次真实 scheduled 调用
+
+- **源码分支**：`feat/gln-003-cloudflare-canary`，Profile 入口提交 `7f58ec3`、完整 T3 测试提交 `fbdbc14`；[CI run #41228319868](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41228319868) **T1 9/9、runtime D1 T3 13/13、Canary 6/6、Profile runtime test 1/1、Mira Gate 成功**。后续文档提交的 CI 另行检查。
+- **构建/部署身份证据**：临时隔离分支 `feat/gln-003-profile-bundle-stage`，GitHub Actions [#41228436418](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41228436418) 编译出完整、重用生产 `fetchLimited`/`parseWithFastXml`/`collectDue` 的专用 scheduled 入口，**Git blob `7d503624428443539826eb9ab252a34bf93953a2`**（210,236 字符）。构建用的临时可写 workflow 已删除。
+- **受控环境**：仅覆盖同名 `cloud-guanlan-gln003-canary` Worker；D1 唯一绑定未更改。创建专属 `gln003_profile_plan` 和 `gln003_profile_samples` 表（不属于正式迁移）；在运行前清除该测试源此前的 25 条记录，其他来源只临时顺延到期时间且已恢复。Cron 设置为 `* * * * *`，Cloudflare 首次真正投递约 9 分钟后开始，于 18:25–18:33 UTC 每分钟运行一次，**9/9 成功且无错误**。
+- 来源为同一公开 `https://www.cloudflarestatus.com/history.atom`，约 **32,218 UTF-16 字符、25 条 Atom 项目**；实际 CPU 数值取自 Cloudflare Analytics SQL `logs.workersLogs` 的 scheduled `cpuTimeMs`，并以 D1 `gln003_profile_samples.run/mode` 及分钟时间顺序核对。下列 `wall_ms` 是代码内部的阶段墙钟，不是 CPU。
+
+| 序号 / UTC | 模式 | Cloudflare CPU | Worker 内部阶段 wall | 新增新闻 |
+| --- | --- | ---: | ---: | ---: |
+| 1 / 18:25 | fetch | **4ms** | 283ms | 0 |
+| 2 / 18:26 | parse | **14ms** | 203ms | 0 |
+| 3 / 18:27 | full | **18ms** | 1,129ms | **25** |
+| 4 / 18:28 | fetch | **4ms** | 99ms | 0 |
+| 5 / 18:29 | parse | **13ms** | 204ms | 0 |
+| 6 / 18:30 | full | **45ms** | 1,188ms | 0（URL 去重） |
+| 7 / 18:31 | fetch | **6ms** | 80ms | 0 |
+| 8 / 18:32 | parse | **31ms** | 75ms | 0 |
+| 9 / 18:33 | full | **19ms** | 1,201ms | 0（URL 去重） |
+
+**分组描述性统计（n=3/组，不计算虚假的 P99）：**
+
+| 模式 | 实测 CPU 序列 | 中位数 | 最小–最大 |
+| --- | --- | ---: | ---: |
+| 仅抓取 | 4, 4, 6ms | **4ms** | 4–6ms |
+| 抓取 + XML 解析 | 14, 13, 31ms | **14ms** | 13–31ms |
+| 完整解析 + D1 | 18, 45, 19ms | **19ms** | 18–45ms |
+
+### 判断与可信度
+
+1. **主线发现：XML 解析是明确的 CPU 高成本环节。** 相同源、相同生产抓取函数条件下，只抓取的 CPU 三次为 4–6ms，调用 `parseWithFastXml` 后为 13–31ms。中位数差 10ms，但不是纯解析 CPU 的无偏估计；只有三个样本，节点/冷暖/网络响应内容与 Worker isolate 状态可能影响结果。
+2. **D1 完整路径也有异常长尾。** 完整模式 18/45/19ms，第二次甚至在 0 新增新闻时用了 45ms；不能断言“D1 写入只消耗 5ms”。完整路径还包含 claim、lease fencing、JSON1 去重和 profile 为使源到期额外执行的一次 UPDATE。D1 外部调用等待时间不计入 Worker CPU，统计混合了运行时调度/序列化等成本。
+3. **免费运行可靠性仍不达标。** Cloudflare 官方 [Workers Free Cron 10ms CPU 限额](https://developers.cloudflare.com/workers/platform/limits/#cpu-time)，parse-only 和 full 的本次 6 次观测全部在 13–45ms，偶发超限被允许成功不代表可持续。9 次样本无法做 P95/P99 或定容量。
+4. 下一步优化应**优先减轻 XML 文档解析、字段归一化和无用节点处理**，并单独评估 D1 claim/fencing/JSON1 去重的固定开销；对 Atom 大源适当控制采集粒度，但不能削弱事务、安全和小时级调度。**不值得为了单次超限购买 Paid**，也不能把本次诊断入口当成生产机制。
+
+### 收尾与安全
+
+- 18:33 UTC，Cloudflare API 对**唯一 Canary Worker** 执行 `PUT schedules=[]` 并 `GET` 确认为 `[]`；Cron 传播可能存在最多约 15 分钟延迟，但 profiler 自身也在 9 次后停止任何网络抓取。
+- 同一会话重新上传先前真实应用 bundle（Git blob `cff903cf9b07493803ca3188eb3268eb36084f00`），确认 `DB` 仍绑定同一个专属 D1，`schedules=[]`。Profile Worker **不再是线上运行版本**。
+- 临时调整的 `gln003-controlled-two` 到期时间恢复到 `2026-10-31T18:45:55.344Z`。D1 新闻始终保留最终 **25 条 Atom + 2 条 RSS，共 27 唯一 URL**。诊断表待证据写入后删除，不扩散到正式数据库。
+- 本次没有更新 `dev/test/prod`，没有触碰其他 Workers、拾言数据库或生产域名。GLN-003 Issue #6 保持 **OPEN**，性能验收不可宣称通过。
+
