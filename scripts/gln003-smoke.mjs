@@ -4,7 +4,8 @@ const url = process.env.GLN003_CANARY_URL;
 if (!url) throw new Error("GLN003_CANARY_URL is required");
 const root = new URL(url);
 if (root.protocol !== "https:" || root.username || root.password ||
-    !root.hostname.startsWith("cloud-guanlan-gln003-canary.")) {
+    !root.hostname.startsWith("cloud-guanlan-gln003-canary.") ||
+    !root.hostname.endsWith(".workers.dev") || root.port) {
   throw new Error("The URL must be the isolated GLN-003 Worker HTTPS hostname");
 }
 const endpoint=path=>new URL(path,root);
