@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0"><channel>
+<title>Guanlan GLN-003 Public Canary Feed</title>
+<link>https://example.org/gln003</link>
+<description>Non-user-controlled fixture for isolated Cloudflare worker ingestion tests</description>
+<item>
+  <guid>https://example.org/gln003/canary-item-01</guid>
+  <title>Cloud Guanlan public test entry one</title>
+  <link>https://example.org/gln003/canary-item-01</link>
+  <description>Small public RSS content for validating bounded D1 writes.</description>
+  <pubDate>Sat, 31 Oct 2026 00:00:00 GMT</pubDate>
+</item>
+<item>
+  <guid>https://example.org/gln003/canary-item-02</guid>
+  <title>Cloud Guanlan public test entry two</title>
+  <link>https://example.org/gln003/canary-item-02</link>
+  <description>A second distinct URL confirms URL idempotency.</description>
+  <pubDate>Sat, 31 Oct 2026 00:00:00 GMT</pubDate>
+</item>
+</channel></rss>
