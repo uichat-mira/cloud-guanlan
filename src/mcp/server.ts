@@ -149,7 +149,7 @@ export function createGuanlanMcp(
 ): GuanlanMcpRuntime {
   const tokenVerifier: OAuthTokenVerifier = {
     async verifyAccessToken(token: string): Promise<AuthInfo> {
-      return authInfoFromPrincipal(token, await verifier.verifyAccessToken(token));
+      return authInfoFromPrincipal(token, await verifier.verifyAccessToken(token), config.resourceUrl);
     },
   };
   const gate = requireBearerAuth({
