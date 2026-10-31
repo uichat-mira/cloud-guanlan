@@ -111,14 +111,14 @@ Cloudflare 官方实时依据：
 
 | 项目 | 状态 |
 | --- | --- |
-| GitHub CI / canary dry-run | **通过**：[PR #7 Run 41222777457](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41222777457)，9/9 T1、12/12 workerd+D1 T3、**5/5 Canary 安全检查**（包含相似域名拒绝）、两份 Wrangler dry-run、Mira Gate 全绿。实际应用包 211.46 KiB / gzip 54.22 KiB，隔离 config 包 211.77 KiB / gzip 54.24 KiB |
+| GitHub CI / canary dry-run | **通过**：[PR #7 run 41225808350](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41225808350)，T1 9/9、workerd+D1 T3 12/12、Canary 6/6，双 Wrangler dry-run、Mira Gate、SonarCloud 均成功；CodeRabbit skipped 不等于批准 |
 | Cloudflare 账号确认为 Free | **维护者从控制台确认无 Workers Paid 订阅**；OAuth Billing Read 仍为 403 |
 | 隔离 Worker / D1 创建 | **已完成**：专属资源、迁移和 D1 DB binding 校验；无其他资源修改 |
-| 真实 Cron / 外网 RSS / D1 租约 | Cron 已配置（5 分钟）；RSS 数据处理结果**待观测** |
-| 真实 CPU P50/P99、D1 rows | **部分取得**：HTTP health 的日志 CPU 样本 0–3ms、D1 remote 查询 rows_read/rows_written；**采集 CPU 未取得** |
-| 免费运行容量与成本决策 | **不能验收** |
+| 真实 Cron / 外网 RSS / D1 租约 | **已验证**：HNRSS 超时退避、25 条真实 Atom 成功、2 条 RSS 成功、2 条重复抓取不新增、过期租约接管且旧 token 写入 0 行 |
+| 真实 CPU P50/P99、D1 rows | **已测得四次 scheduled CPU：8、32、10、10ms**，墙钟 9394、1600、1647、1721ms；D1 REST meta 和 Analytics SQL rowsRead/rowsWritten 可读取。但样本少，不能作为稳定 P99/账单容量预估 |
+| 免费运行容量与成本决策 | **暂不放行长期免费采集**：25 条 Atom CPU 32ms 超 Free 标称 Cron 单次 10ms，2 条 RSS 与重复处理均为 10ms，无安全裕量；需要小步优化和真实更多窗口再复验 |
 
-**GLN-003 必须保持开放，直到 RSS 定时采集、容错和 CPU/D1 用量满足真实验收。**
+**GLN-003 保持开放：真实云端功能链路已验证，但 Free CPU 裕量未满足生产化验收，仍需优化/复测。Cron 已停用，不会持续消耗测试额度。**
 
 ## 6. 真实 Cloudflare 隔离环境执行记录（2026-10-31 UTC）
 
@@ -131,6 +131,28 @@ Cloudflare 官方实时依据：
 - 17:30–17:31 UTC：首个真实 Cron scheduled 调用触发，HNRSS 上游发生 8 秒请求超时，D1 记录 `fetch_timeout`、`retry_count=1` 和下次到期时间。Analytics SQL 取得该 scheduled **CPU 8ms、wall 9394ms**，未写入任何新闻；这证明失败记录与退避生效，但**不证明成功解析或稳定容量**。隔离 D1 `events.d1Queries` 可单独观察 lease claim、失败更新、积压计算的行读写，不能混入手工 SQL 观测成本。
 - 17:32 UTC：新增第二个公共测试 Atom 来源 `https://www.cloudflarestatus.com/history.atom` 作为真实外网对照；仅 2 个来源，没有放开公共新闻接口。
 - D1 REST SQL 查询每条响应包含 `meta.rows_read` / `meta.rows_written`，且 Cloudflare Analytics SQL `events.d1Queries` 成功查询该独立数据库的记录（例如单条 test-source INSERT 产生 5 行写入）；**手动 REST SQL 查询与 Worker Cron SQL 必须分离统计**。
-- 后续待验证：真正 scheduled 事件、RSS 成功与幂等、错误恢复、scheduled CPU（及冷暖差异）、D1 采集读写计量和实测容量。不得把本节当成全部验收通过。
+- 当前已经实际验证 scheduled、RSS/Atom 成功/失败退避、D1 租约接管和 URL 幂等；**尚未通过**的是免费 CPU 安全裕量、持续冷/热样本以及精确区分手工 SQL 和 Cron 的全面 D1 行成本。不得把当前验收当成可投入长期生产的免费容量证明。
+
+
+### 17:35—17:46 UTC 实测补充与停机确认
+
+| Cron 事件 | 来源 / 结果 | CPU (Cloudflare) | Wall | 数据处理 |
+| --- | --- | ---: | ---: | --- |
+| 17:30（日志 17:31） | HNRSS 请求超时 | 8ms | 9,394ms | `fetch_timeout`、退避成功、0 新增 |
+| 17:35 | Cloudflare Status Atom | **32ms** | 1,600ms | 25 条独立 URL 成功入库 |
+| 17:40 | 受控、公开 2 条 RSS fixture | **10ms** | 1,647ms | 新增 2 条独立 URL |
+| 17:45 | 同一 2 条 RSS 再次采集 | **10ms** | 1,721ms | **0 新增**，过期租约被接管 |
+
+17:45 UTC 测试准备时，仅在专属库将 `gln003-controlled-two` 的 `due_at` 调到已到期，并设置 `lease_token=gln003-expired-lease-test`、`lease_expires_at` 为过去时间。真实 Cron 完成后：
+- `last_status=succeeded`，`last_error=NULL`，`retry_count=0`，`lease_token=NULL`，`lease_expires_at=NULL`。
+- `due_at=2026-10-31T18:45:55.344Z`，从实际完成时间重新顺延 1 小时，而非 Cron 计划时间。
+- 逐源新闻计数：Cloudflare Status **25/25 URL 唯一**，fixture **2/2 URL 唯一**；总数始终为 **27**。
+- 使用原过期 token 执行条件 UPDATE，**0 行改变**。这能证明远程 D1 的所有权围栏条件；真实双 Cron 实例同时争抢只在前序 workerd T3 通过，**不能把这次按序复测描述成真实并发竞争验收**。
+
+**17:46 UTC：仅操作 `cloud-guanlan-gln003-canary` Worker，PUT 空计划数组关闭 Cron，GET 复核 `schedules=[]`。** Cloudflare 表示 Cron 配置全球传播可能最长 15 分钟，所以此时是控制面的**已禁用**，不能承诺所有区域立刻停止；保留两件隔离资源但不做自动采集，未做 `dev/test/prod` 发布。资源安全复核：原有 11 个 Workers 和唯一原有 D1 `mira-shiyan` 全部仍在。
+
+**免费额度技术结论（暂不生产放行）：** Cloudflare 官方 [Workers Free CPU time limits](https://developers.cloudflare.com/workers/platform/limits/#cpu-time) 标称 Cron 单次 10ms，当前四个成功/失败混合样本的 CPU 是 **8、32、10、10ms**，至少一次明显超限、两次踩线。单次 32ms 成功来自平台偶发超限容忍度，绝不能外推为可持续生产承诺。优先做局部 CPU profiling：区分解析、每条记录构造、批量 D1 `prepare`/事务响应；保留 GLN-002 的租约原子性和失败安全，控制条目上限、按真实样本定参数，不引入付费平台，不提前冻结每日可支持来源数量。**不能凭 4 次样本算可靠 P99。**
+
+观测来源：Cloudflare Analytics SQL API `logs.workersLogs` + 专属 D1 REST `meta` 与 `events.d1Queries`，查询窗口 2026-10-31 17:30–17:46 UTC。D1 SQL telemetry 可能采样且混合了人工查询，**不将整个查询窗口 rowsRead/rowsWritten 汇总作为纯 Cron 开销**。成功路径和幂等数据以实时 D1 记录核实。
 
 Cloudflare 官方 [Cron 触发器传播说明](https://developers.cloudflare.com/workers/configuration/cron-triggers/) 与 [Analytics SQL API](https://developers.cloudflare.com/analytics/sql-api/) 是本次指标和观察窗口的依据。
