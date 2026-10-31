@@ -1,7 +1,7 @@
 # GLN-003 · Cloudflare 隔离实测手册与证据状态
 
 > [任务契约 #6](https://github.com/uichat-mira/cloud-guanlan/issues/6)。
-> **当前状态：已在维护者确认无 Workers Paid 订阅后，创建隔离 D1、执行迁移、通过 Cloudflare API 上传真实 Worker，并完成公网 HTTP smoke；Cron 已配置，采集结果及真实 RSS CPU 仍待观察。** 不能以通过 CI 代替云端验收。
+> **当前状态（2026-11-01）：专属 Cloudflare Worker + D1 已真实部署、采集、测量并完成安全收尾；Canary Cron 已关闭，正式应用 bundle 已恢复。** 已取得定时采集、超时退避、过期租约、URL 幂等和 CPU 的运行证据；**尚未证明 Workers Free 10ms CPU 限额下可持续稳定运行**。见第 6 节与 [九次 CPU 三段剖析](gln-003-cpu-profile.md)，不能以通过 CI 代替云端验收。
 
 ## 1. 本轮已经核实的账号事实
 
@@ -15,7 +15,7 @@
 
 ## 2. 隔离配置与防误操作
 
-代码仍然是 `src/index.ts` + `src/ingest.ts`；没有专用的简化版合成 Worker。GLN-003 仅增加独立配置生成器、HTTP smoke、真实分析接口采集脚本和保护测试，不修改 `wrangler.jsonc` 的 GLN-001/002 POC 定义。
+正式运行代码仍是 `src/index.ts` + `src/ingest.ts`；隔离 Canary 部署与 CPU 对照均复用这套采集实现，而不是合成假 Worker。GLN-003 增加独立配置、HTTP smoke、指标脚本、临时可复现的 scheduled 剖析入口与回归测试；`src/parser.ts` / `src/ingest.ts` 只做有测试保护的局部性能优化。原始 POC 的 `wrangler.jsonc` 不改动，也不附带自动生产部署。
 
 - Worker / D1 名：`cloud-guanlan-gln003-canary`，Workers.dev 仅暴露现有 `GET /health`；其他资讯/账号路径必须 404。
 - 初始配置 **Cron 关闭**，须完成迁移与隔离检查后再次明确启用；不关联任何生产域名、route、队列或其他 D1。
@@ -34,9 +34,11 @@ npm run check
 
 `node scripts/gln003-config.mjs --dry-run` 生成仅用于打包的不可用 D1 UUID / 无 Cron 配置；`wrangler deploy --dry-run --config dist/gln003/wrangler.json` 仅打包，不部署。
 
-## 3. Cloudflare 真实资源验收步骤（复现手册；实际执行状态见第 6 节）
+## 3. Cloudflare 真实资源验收步骤（仅供全新隔离环境复现；已创建资源绝不可照做重建）
 
 **前提：** 确认本连接账号的 Workers **Free** 计划；取得账户管理权限、隔离 Worker/D1 创建权限和 Analytics Read。核对专属资源名仍未占用。创建前保存当前非 Guanlan Worker/D1 列表（资源基线）。
+
+**重要：** 本仓库当前 Cloudflare 账号中已存在同名 Canary Worker/D1。以下 `d1 create` 与迁移命令仅供新的隔离测试账号或经明确命名、重新核准的全新资源复现；**不可在现存 Canary 上重新执行创建/迁移、不可拿历史 UUID 代入并覆盖现有绑定**。现存环境要复测须先读取真实资源名、绑定与 Cron 状态，再按 Issue 约定逐项执行。
 
 1. `npx wrangler d1 create cloud-guanlan-gln003-canary`，记录输出的**新建专属** D1 UUID，不得输入其他数据库 ID。
 2. 以下环境变量仅在本地终端设置，不写入仓库或日志（PowerShell 示意）：
