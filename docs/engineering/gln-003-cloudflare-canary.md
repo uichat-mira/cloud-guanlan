@@ -1,17 +1,17 @@
 # GLN-003 · Cloudflare 隔离实测手册与证据状态
 
 > [任务契约 #6](https://github.com/uichat-mira/cloud-guanlan/issues/6)。
-> **当前状态：隔离测试工装已施工；尚未创建 Cloudflare 测试资源、部署代码或取得真实 Free CPU/D1 指标。** 不能以通过 CI 代替云端验收。
+> **当前状态：已在维护者确认无 Workers Paid 订阅后，创建隔离 D1、执行迁移、通过 Cloudflare API 上传真实 Worker，并完成公网 HTTP smoke；Cron 已配置，采集结果及真实 RSS CPU 仍待观察。** 不能以通过 CI 代替云端验收。
 
 ## 1. 本轮已经核实的账号事实
 
 使用已连接的 Cloudflare OAuth 只读检查：
 
 - 当前只有一个可读 Cloudflare 账号。该账号已有 Mira Relay、拾言、Control Room 等 Worker，及一个 **非 Guanlan** D1 数据库。
-- 尚无 `cloud-guanlan-gln003-canary` Worker 和同名 D1；这些是本卡专属的隔离资源名。**绝不复用、修改、迁移或删除其他资源**。
+- 已于 2026-10-31 UTC 建立 `cloud-guanlan-gln003-canary` Worker 和同名 D1，严格只操作这两件新建资源。**未复用、修改、迁移或删除其他资源**。
 - `GET /accounts/{id}/workers/account-settings` 返回 `default_usage_model: standard`，这**不是** Free/Paid 计划证明。
 - `GET /accounts/{id}/subscriptions` 和 `billing/usage` 返回 **403 / OAuth 无 Billing Read scope**。故无法验证本账号 Workers Free 状态、余额或付费风险。
-- 截至这些权限问题消除或维护者从 Dashboard 独立确认 Free 计划之前，**本卡不得创建真实云资源或启动 Cron**。下面所有云端步骤均为**后续待执行**的手册，不是执行记录。
+- **2026-11-01 用户独立确认 Cloudflare 控制台无 Workers Paid 订阅**，且仅为域名绑卡；据此视为允许在 Free 边界内开始小规模隔离验证。Billing Read API 仍是 403，不将 HTTP API 无权限当成付费证据。下述为可复现操作步骤，已执行的实际证据见第 6 节。
 
 ## 2. 隔离配置与防误操作
 
@@ -34,7 +34,7 @@ npm run check
 
 `node scripts/gln003-config.mjs --dry-run` 生成仅用于打包的不可用 D1 UUID / 无 Cron 配置；`wrangler deploy --dry-run --config dist/gln003/wrangler.json` 仅打包，不部署。
 
-## 3. Cloudflare 真实资源验收步骤（全部待执行）
+## 3. Cloudflare 真实资源验收步骤（复现手册；实际执行状态见第 6 节）
 
 **前提：** 确认本连接账号的 Workers **Free** 计划；取得账户管理权限、隔离 Worker/D1 创建权限和 Analytics Read。核对专属资源名仍未占用。创建前保存当前非 Guanlan Worker/D1 列表（资源基线）。
 
@@ -112,10 +112,23 @@ Cloudflare 官方实时依据：
 | 项目 | 状态 |
 | --- | --- |
 | GitHub CI / canary dry-run | **通过**：[PR #7 Run 41222777457](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41222777457)，9/9 T1、12/12 workerd+D1 T3、**5/5 Canary 安全检查**（包含相似域名拒绝）、两份 Wrangler dry-run、Mira Gate 全绿。实际应用包 211.46 KiB / gzip 54.22 KiB，隔离 config 包 211.77 KiB / gzip 54.24 KiB |
-| Cloudflare 账号确认为 Free | **阻塞：Billing Read 403** |
-| 隔离 Worker / D1 创建 | **未执行** |
-| 真实 Cron / 外网 RSS / D1 租约 | **未执行** |
-| 真实 CPU P50/P99、D1 rows | **未取得** |
+| Cloudflare 账号确认为 Free | **维护者从控制台确认无 Workers Paid 订阅**；OAuth Billing Read 仍为 403 |
+| 隔离 Worker / D1 创建 | **已完成**：专属资源、迁移和 D1 DB binding 校验；无其他资源修改 |
+| 真实 Cron / 外网 RSS / D1 租约 | Cron 已配置（5 分钟）；RSS 数据处理结果**待观测** |
+| 真实 CPU P50/P99、D1 rows | **部分取得**：HTTP health 的日志 CPU 样本 0–3ms、D1 remote 查询 rows_read/rows_written；**采集 CPU 未取得** |
 | 免费运行容量与成本决策 | **不能验收** |
 
-**GLN-003 必须保持开放，直到真的取得账号计划与云端数据。**
+**GLN-003 必须保持开放，直到 RSS 定时采集、容错和 CPU/D1 用量满足真实验收。**
+
+## 6. 真实 Cloudflare 隔离环境执行记录（2026-10-31 UTC）
+
+- 17:18 UTC：使用已连接 Cloudflare 账号创建专属 D1 `cloud-guanlan-gln003-canary`；REST API 成功执行 `0001_poc.sql` / `0002_source_leases.sql` 八条建表、索引和 ALTER 操作，校验十个列名称。D1 库 UUID 和账号 ID **不进入仓库文本**。
+- GitHub 隔离构建 [Actions #41224035516](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41224035516) 基于 GLN-003 PR 源码（未更改其真实 `src/index.ts` / `src/ingest.ts` / `src/parser.ts`）编译 ES Module bundle；上传的 bundle Git blob 是 `0bdca1006db3d628ad933de6a1c1b615e0425a11`。临时构建仅在分离的 `feat/gln-003-bundle-staging` 分支发生，不属于待合入的 PR。
+- 17:22 UTC 前后：Cloudflare API 上传完整 207,449 字符 Worker bundle，`DB` binding 精确绑定该专属 D1，`compatibility_date=2026-08-06`；独立验证初始 Cron 为空，`workers.dev` 开启、preview 关闭。
+- 17:22 UTC：公网真实 smoke [Actions #41224199119](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41224199119)：`/health` HTTP 200 + `publicApi:false`，四个私有路径均 404。
+- 17:23 UTC：仅插入来源 `gln003-hn-small`，公共 HTTPS `hnrss.org/newest?count=5`，每 1 小时更新；只对该 Worker 启用 `*/5 * * * *` Cron。Cloudflare 官方说明新 Cron 最长约 15 分钟传播，因此**Cron API 显示成功不代表实际触发已成功**。
+- 17:27 UTC：GitHub Runner HTTP health 及私有路由复验成功；在**同一测试 Worker**上开启 Cloudflare Observability（100% invocation logs、查询参数脱敏）；Analytics SQL `logs.workersLogs` 实测 5 次 HTTP 访问，CPU **0–3ms**，HTTP 200/404 均无异常。这不代表 RSS 解析的 CPU。
+- D1 REST SQL 查询每条响应包含 `meta.rows_read` / `meta.rows_written`，且 Cloudflare Analytics SQL `events.d1Queries` 成功查询该独立数据库的记录（例如单条 test-source INSERT 产生 5 行写入）；**手动 REST SQL 查询与 Worker Cron SQL 必须分离统计**。
+- 后续待验证：真正 scheduled 事件、RSS 成功与幂等、错误恢复、scheduled CPU（及冷暖差异）、D1 采集读写计量和实测容量。不得把本节当成全部验收通过。
+
+Cloudflare 官方 [Cron 触发器传播说明](https://developers.cloudflare.com/workers/configuration/cron-triggers/) 与 [Analytics SQL API](https://developers.cloudflare.com/analytics/sql-api/) 是本次指标和观察窗口的依据。
