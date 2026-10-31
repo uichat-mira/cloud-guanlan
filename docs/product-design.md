@@ -1,6 +1,6 @@
 # 观澜（Cloud Guanlan）产品与服务设计 v0
 
-> Status: **产品边界已讨论确认；Workers+D1 POC 与独立 Canary 实测已运行，仍未通过 Free CPU 稳定性验收，尚未有生产业务服务**
+> Status: **产品边界已讨论确认；Workers+D1 POC 与独立 Canary 实测已运行；GLN-004 已在代码中实现受 Cloud Auth 保护的远程 MCP 协议入口，尚未部署，也未通过 Free CPU 稳定性或真实 Cloud Auth 联调验收。尚无生产业务服务。**
 >
 > 日期：2026-10-31 · Owner：Mira Cloud · 仓库：uichat-mira/cloud-guanlan
 >
@@ -131,12 +131,26 @@ Markdown 作为低心智的默认阅读视图；JSON 作为受 Schema 约束的�
 - 原文不由观澜读取。外部 Agent 按需使用自己的 Web Fetch；是否采用、为何采用由 Agent 决定。
 - 结果须可分页、可追溯；失败时应显式返回错误，而不是混入假新闻或空结果掩盖服务故障。
 
+### 4.3 远程 MCP 是 Agent 集成的唯一标准入口
+
+GLN-004 已确定 **MCP Streamable HTTP 是外部 Agent 与观澜交互的 canonical 协议入口**；观澜是 MCP **resource server（数据/工具提供方）**，不是 Agent runtime，也不自行签发 OAuth 凭证。
+
+- 首个实现采用 MCP `2026-07-28` 无状态协议：每请求携带版本/客户端元数据，使用标准 `MCP-Protocol-Version`、`Mcp-Method`、`Mcp-Name` 头，不建立长连接会话、不返回 `Mcp-Session-Id`。
+- 为兼容现有客户端，服务端在同一工厂上保留 `2025-06-18`/`2025-11-25` 的 `initialize` 无状态 legacy 路径；legacy 兼容不等于 Desktop/Mobile 已完成接入。
+- 工具名、输入/输出 Schema、错误映射集中定义；当前只提供有界、只读、带 `readOnlyHint` 的工具，不得在读取工具中触发采集或写入消费状态。
+- REST 只可作为**明确记录的 UI/管理辅助接口**存在，不得发展为与 MCP 平行的另一套 Agent API，也不得复制工具语义形成第二个真相源。
+- 保护边界使用 Cloud Auth 作为独立 OAuth authorization server；观澜只验证 Guanlan 受众、scope、稳定 consumer 身份的访问凭证。认证默认失败关闭，不提供观澜密码登录、token 铸造或匿名降级。
+- 授权发现使用 RFC 9728 protected-resource metadata 与 401 `WWW-Authenticate` 指向**已配置的 Mira Cloud Auth**；未配置 issuer/JWKS/audience 时不开放 `/mcp`。
+- **尚未交付：** Cloud Auth 的 Guanlan-scoped 凭证签发、Desktop 现代传输/OAuth 适配、Mobile 直连或 Host bridge，以及真实用户端到端联调。详见 [GLN-004 工程边界](engineering/gln-004-mcp.md)。
+
 ## 5. 身份、授权与安全边界
 
 统一身份依赖 [Mira Cloud Authentication Design](https://github.com/uichat-mira/.github/blob/main/docs/engineering/mira-cloud-auth.md)。此处冻结的是**观澜如何使用身份**，不是重新定义 Cloud Auth 的签发协议。
 
 - Mira Cloud Account 是用户主体，Cloud Auth 负责认证、允许/禁用和云端会话；观澜验证适用于**观澜受众**的身份凭证，并自行执行用户资源授权。
-- 每个外部消费者拥有独立、可撤销的访问能力；是否采用细粒度 scope（例如 read、status.write、proposal.create）是后续接口与鉴权设计工作，不在此捏造已经存在的 scope 名称。
+- 远程 MCP 场景下，Cloud Auth 是独立的 **OAuth authorization server**，观澜是 **resource server**；观澜不得签发访问令牌，也不得把设备 Cloud Session 直接当作 MCP access token。
+- MCP 凭证必须绑定 Guanlan 受众、所需 scope、到期时间和稳定的 consumer 身份；消费者身份只能来自已验证凭证，不能来自模型/工具参数中的名称。
+- 每个外部消费者拥有独立、可撤销的访问能力；是否采用细粒度 scope（例如 read、status.write、proposal.create）是后续接口与鉴权设计工作，不在此捏造已经存在的 scope 名称。Guanlan MCP 当前声明的 `guanlan.read` 是资源服务端契约，不代表 Cloud Auth 已经完成签发实现。
 - 同一个用户下的不同消费者状态隔离；不同用户之间的配置、订阅、建议、处理记录隔离。
 - 每个消费者可生成一条高熵、可撤销、可轮换的**只读私有链接**，仅用于 Web Fetch 读取。它是携带凭证的秘密 URL，不是可公开分享的 RSS 网址，也不得写入代码仓库或日志。
 - 私有链接不能被搜索引擎索引、被共享缓存缓存到别的用户、经 Referer 泄漏给原文网站、或通过重定向送给第三方。响应采用私有/禁止缓存策略，链接泄露可立即撤销。
@@ -223,8 +237,10 @@ Mira Cloud Account / 授权消费者
 - **云端**逐步成为共享采集与授权消费的服务入口。
 - **桌面/手机**可以是用户的配置和阅读界面，以及使用资讯的 Agent 宿主；不要求为观澜内置 Agent。
 - 桌面本地 NewsHub 的迁移、共存、兼容、停用和数据导入策略，必须在查看当前代码与依赖后另立工程契约；**本设计未授权删除或改写桌面既有实现**。
-- Cloud Auth 协议与消费者状态契约应有唯一责任方；不能让桌面和云端长期维护各自冲突的权威消费状态。
-- 本仓库目前只有基础初始化文件；此文为目标设计，不证明任何功能已经实现。
+- Desktop 当前的 MCP 外部服务适配仍硬编码 `2025-06-18` `initialize` 与手动 Bearer；它是否/何时支持 `2026-07-28` 现代传输和 OAuth 是独立的后续客户端工作，**不由 GLN-004 交付**。
+- Mobile 当前没有原生 MCP 客户端；未来可选择直接 MCP 或经 Host bridge。两条路径都必须复用同一 Guanlan MCP 契约，不能各自另造平行 API。
+- Cloud Auth 协议与消费者状态契约应有唯一责任方；不能让桌面和云端长期维护各自冲突的权威消费状态。Cloud Auth 的 Guanlan 受众/scope 签发仍是独立任务，观澜不得在本地补造。
+- 本仓库已实现 GLN-001..004 的采集与 MCP 协议代码，但尚未部署为生产业务服务；代码、测试和 Issue 证据才说明当前技术现实，产品目标不因文档描述而自动上线。
 
 ## 9. 端到端验收故事（后续工程合同的输入）
 
@@ -260,7 +276,7 @@ Mira Cloud Account / 授权消费者
 
 这份设计只记录目标和待验证假设。下一阶段应先完成最小技术 POC：真实 Worker + D1、少量 Feed、按小时调度、一名用户与两个消费者、状态写回和失败场景。通过实测后再拆成可独立验证的工程卡。
 
-**当前已有 GLN-001/002 POC 和 GLN-003 隔离 Cloudflare Canary；仅证明基础采集链路可执行，不意味着已经完成 Cloud Auth、用户订阅或状态 API，更不意味着通过 Workers Free 长期稳定性验收。**
+**当前已有 GLN-001/002 POC、GLN-003 隔离 Cloudflare Canary 和 GLN-004 远程 MCP 协议入口代码；仅证明基础采集链路与资源服务端协议边界可执行，不意味着已经完成 Cloud Auth 签发/联调、用户订阅、状态写回 API 或生产部署，更不意味着通过 Workers Free 长期稳定性验收。**
 
 相关权威资料：
 
