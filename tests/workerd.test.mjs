@@ -7,7 +7,7 @@ import { rss } from "./fixtures.mjs";
 const TEST_ID="00000000-0000-4000-8000-000000000001";
 async function withWorker(fetcher, run){
  const mf=new Miniflare({
-   modules:true, scriptPath:"dist/worker.mjs",compatibilityDate:"2026-10-01",cf:false,
+   modules:true, scriptPath:"dist/worker.mjs",compatibilityDate:"2026-08-06",cf:false,
    d1Databases:{DB:TEST_ID},
    serviceBindings:{TEST_FEED_FETCHER:async(request)=>fetcher(request)}
  });
