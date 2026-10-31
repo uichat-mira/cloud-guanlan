@@ -315,7 +315,7 @@ test("long article URLs preserve distinct stable identities and exact fetchable 
       assert.deepEqual(new Set(selected.map(item => item.url)), new Set(urls));
       assert.notEqual(selected[0].id, selected[1].id);
       for (const item of selected) {
-        assert.match(item.id, /^gln:[a-f0-9]{64}$/);
+        assert.equal(item.id, item.url);
         assert.ok(item.url.length > 2048);
       }
       const again = await read();
