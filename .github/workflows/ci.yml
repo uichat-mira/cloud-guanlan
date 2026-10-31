@@ -20,6 +20,15 @@ jobs:
       - name: Verify docs or real runtime checks
         shell: bash
         run: bash scripts/check.sh
+      # POC transition: capture the generated npm lock as inspectable evidence.
+      # Once committed, this artifact is unnecessary and may be retired.
+      - name: Capture GLN-001 dependency lock
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: gln-001-lockfile
+          path: package-lock.json
+          if-no-files-found: warn
 
   branch-policy:
     name: Branch Policy
