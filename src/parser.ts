@@ -65,7 +65,7 @@ export function parseWithFastXml(input: string, source: string): NewsCandidate[]
   if (doc.feed) {
     return result(items(doc.feed.entry).map(i => {
       const links = items(i.link);
-      const link = links.find(x => !x["@_rel"] || x["@_rel"] === "alternate") ?? links[0];
+      const link = links.find(x => !x["@_rel"] || x["@_rel"] === "alternate");
       return {title:i.title, summary:i.summary, url:link?.["@_href"], date:i.published ?? i.updated};
     }), source);
   }
