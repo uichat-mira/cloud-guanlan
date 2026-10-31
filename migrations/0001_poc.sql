@@ -1,4 +1,3 @@
--- GLN-001: isolated, temporary data model; not a production subscription schema.
 CREATE TABLE IF NOT EXISTS poc_sources (
   id TEXT PRIMARY KEY,
   url TEXT NOT NULL UNIQUE,
