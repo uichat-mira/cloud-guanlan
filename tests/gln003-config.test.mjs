@@ -63,3 +63,17 @@ test("dry-run uses only an impossible remote DB placeholder and never enables Cr
   assert(!Object.hasOwn(c,"account_id"));
   assert(!r.stdout.includes("11111111111111111111111111111111"));
 });
+
+test("HTTP smoke refuses non-Cloudflare host without contacting it",()=>{
+  for(const url of [
+    "https://cloud-guanlan-gln003-canary.example.com",
+    "https://cloud-guanlan-gln003-canary.foo.workers.dev.evil.test",
+    "http://cloud-guanlan-gln003-canary.test.workers.dev",
+  ]){
+    const result=spawnSync(process.execPath,["scripts/gln003-smoke.mjs"],{
+      env:{...process.env,GLN003_CANARY_URL:url},encoding:"utf8",timeout:5000
+    });
+    assert.notEqual(result.status,0);
+    assert.match(result.stderr,/isolated GLN-003 Worker HTTPS hostname/);
+  }
+});
