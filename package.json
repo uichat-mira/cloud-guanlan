@@ -1,0 +1,29 @@
+{
+  "name": "@uichat-mira/cloud-guanlan",
+  "private": true,
+  "version": "0.0.0-poc",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "esbuild src/index.ts --bundle --platform=browser --format=esm --target=es2022 --outfile=dist/worker.mjs && esbuild src/parser.ts --bundle --platform=neutral --format=esm --outfile=dist/parser.mjs && esbuild tests/bench.worker.ts --bundle --platform=browser --format=esm --target=es2022 --outfile=dist/bench.mjs",
+    "typecheck": "tsc --noEmit",
+    "test:unit": "npm run build && node --test tests/parser.test.mjs",
+    "test:integration": "npm run build && node --test tests/workerd.test.mjs",
+    "test:benchmark": "npm run build && node tests/bench.mjs",
+    "dry-run": "wrangler deploy --dry-run --outdir dist/wrangler",
+    "check": "npm run typecheck && npm run test:unit && npm run test:integration && npm run dry-run && npm run test:benchmark"
+  },
+  "dependencies": {
+    "drizzle-orm": "^0.44.0",
+    "fast-xml-parser": "^5.0.0",
+    "feedsmith": "3.0.1",
+    "hono": "^4.0.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260101.0",
+    "esbuild": "^0.25.0",
+    "miniflare": "^4.0.0",
+    "typescript": "^5.9.0",
+    "wrangler": "^4.0.0"
+  }
+}
