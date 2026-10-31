@@ -203,3 +203,20 @@ test("late-delivered Cron uses real execution time for leases and cannot be doub
       "Success refresh interval must start at actual completion, not scheduled event time");
   });
 });
+
+test("late-delivered failed Cron schedules retry from actual failure time",async()=>{
+  await withWorker(async()=>new Response("upstream unavailable",{status:503}),async({db,worker})=>{
+    await seed(db);
+    const before=Date.now();
+    const result=await tick(worker,before-24*3_600_000);
+    assert.equal(result.outcome,"ok");
+    const row=await db.prepare("SELECT last_status,retry_count,due_at,lease_token FROM poc_sources WHERE id='feed-a'").first();
+    assert.equal(row.last_status,"failed");
+    assert.equal(row.retry_count,1);
+    assert.equal(row.lease_token,null);
+    assert(Date.parse(row.due_at)>=before+300_000,
+      "Retry cannot be anchored to yesterday's scheduled event time");
+    assert(Date.parse(row.due_at)<Date.now()+345_000,
+      "First failure must remain inside the bounded retry window");
+  });
+});
