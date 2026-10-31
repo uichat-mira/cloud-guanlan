@@ -1,9 +1,10 @@
 import type { GuanlanPrincipal } from "../src/mcp/auth";
 
 export const MCP_TEST_RESOURCE_URL = "https://127.0.0.1/mcp";
-export const MCP_TEST_ISSUER = "https://auth.example.com";
+export const MCP_TEST_ISSUER = "https://auth.example.com"; // OAuth authorization-server URL
+export const MCP_TEST_TOKEN_ISSUER = "mira:cloud-auth"; // Signed Cloud Auth credential issuer
 export const MCP_TEST_JWKS_URL = "https://auth.example.com/.well-known/jwks.json";
-export const MCP_TEST_AUDIENCE = "https://127.0.0.1/mcp";
+export const MCP_TEST_AUDIENCE = "mira:cloud-guanlan";
 export const MCP_TEST_SCOPE = "guanlan.read";
 export const MCP_TEST_FUTURE_EXP = 4_102_444_800; // 2100-01-01T00:00:00Z
 
@@ -12,7 +13,7 @@ const base = (): GuanlanPrincipal => ({
   consumerId: "consumer-1",
   scopes: [MCP_TEST_SCOPE],
   expiresAt: MCP_TEST_FUTURE_EXP,
-  issuer: MCP_TEST_ISSUER,
+  issuer: MCP_TEST_TOKEN_ISSUER,
   audience: MCP_TEST_AUDIENCE,
 });
 
