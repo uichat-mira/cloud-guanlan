@@ -7,6 +7,7 @@
 
 - **Cron wakes every 5 minutes**, but the service reads each source's `interval_hours` from D1 (1–24 hours); cron frequency is *not* source polling cadence.
 - A single SQLite `UPDATE ... RETURNING` claims the earliest due, available source. The `lease_token` and `lease_expires_at` columns protect against concurrent Cron invocations and recover from crashes.
+- **Cron time semantics (PR #5 review fix):** `scheduledTime` is only event metadata, not the execution clock. Actual `Date.now()` drives claim eligibility, lease expiration/fencing, source completion, failure retry and overdue metrics. A delayed Cron cannot create an already-expired lease or schedule a retry in the past. Local tests manipulate D1 due/expiry state to simulate recovery, rather than advancing a fake scheduled timestamp.
 - Lease duration **60 seconds**, request wall timeout **8 seconds**, invocation soft wall budget **16 seconds**, **maximum 2 sources per invocation**; sources are fetched and parsed sequentially. These are **local POC starting parameters**, not measured Cloudflare Free capacity or guaranteed real-time latency.
 - Success writes news and resets retry state. Insertions and state completion share a **single D1 batch transaction**, with every news insertion fenced by the current lease token; stale holders cannot overwrite newer source status or insert out-of-lease news.
 - Failure of an external source records an error **category** without URL or response body. Repeated failures use capped exponential backoff starting at 5 minutes with deterministic jitter under 45 seconds, max 6 hours + jitter. Failed sources do not consume every future tick.
@@ -41,9 +42,14 @@ npm run dry-run
 npm run check
 ```
 
-The fast unit tests cover interval validity, capped deterministic backoff and bounded Cron policy. The real Miniflare/workerd + D1 tests cover: concurrent Cron claim, two-source bounded batches and eventual progress for a third, failed source retry, stale-holder fencing after lease expiry, D1 transaction failure rollback and recovery, oversized/invalid feeds, idempotence and GET safety. CI verifies the actual Worker handler and D1 binding, not a mock database.
+The fast unit tests cover interval validity, capped deterministic backoff and bounded Cron policy. The real Miniflare/workerd + D1 tests cover: concurrent Cron claim, delayed Cron overlapping an active lease, real-clock retry after delayed failure, two-source bounded batches and eventual progress for a third, failed source retry, stale-holder fencing after lease expiry, D1 transaction failure rollback and recovery, oversized/invalid feeds, idempotence and GET safety. CI verifies the actual Worker handler and D1 binding, not a mock database.
 
-**GitHub Runner evidence (code commit `0f2e76c`):**
+**GitHub Runner evidence and review repair:**
+
+- [Run 41220818140](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41220818140), code commit `4157101`: after fixing the P2 delayed-Cron time bug, **T1 9/9, workerd+D1 T3 11/11**, Wrangler dry-run and Mira Gate passed. The additional late-failure retry test added afterward needs its own final CI evidence.
+- Core P2 analysis: [PR #5 review](https://github.com/uichat-mira/cloud-guanlan/pull/5). Prior tests advanced scheduledTime but did not model a Cron arriving after the scheduled instant; that oversight is now regression-covered.
+
+**Original POC evidence (pre-review repair):**
 
 - [Actions run 41219774475](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219774475): Repository Contract, Branch Policy, Mira Gate all **success**. Reproducible `npm ci`; `tsc --noEmit`; T1 **9/9**, real Miniflare/workerd + D1 T3 **10/10** (including a 3-hour source interval across 5-minute Cron wakes), Wrangler dry-run and parsing comparison passed.
 - First implementation run [41219502927](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219502927) caught a stale assertion expecting free-form `oversized` text rather than the safe stored error category `feed_too_large`. The test now checks the explicit code while retaining its rejection/no-write assertion. The corrected run [41219566002](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219566002) was also green.
