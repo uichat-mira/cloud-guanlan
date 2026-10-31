@@ -84,7 +84,7 @@ npm run check
 
 ### 云端使用量获取
 
-Workers Dashboard 可直接查看 CPU 使用分布。Cloudflare 官方 GraphQL 的 `workersInvocationsAdaptive` 可返回 Worker CPU P50/P99；`d1AnalyticsAdaptiveGroups` 可返回目标数据库读/写**查询次数**。在拥有 `Account Analytics Read` 的独立 API token 后可运行：
+Workers Dashboard 可直接查看 CPU 使用分布。Cloudflare **Analytics SQL API** 可以直接查询 `logs.workersLogs` 的真实 CPU/墙钟记录和 `events.d1Queries` 的 D1 **实际 rowsRead/rowsWritten**。本次连接的 Cloudflare OAuth 已实测能读取这些数据；在独立终端使用同类权限的 API token 可运行：
 
 ```powershell
 $env:GLN003_FROM = "2026-11-01T00:00:00Z"
@@ -93,7 +93,7 @@ $env:CLOUDFLARE_API_TOKEN = "<Account Analytics Read API token>"
 node scripts/gln003-metrics.mjs
 ```
 
-*注意：查询次数不是行读/写数量！* 行数应从 D1 Dashboard Row Metrics 或 Worker Binding API 返回的 `meta.rows_read` / `meta.rows_written` 的真实查询记录获取。GraphQL 接口实现未在本轮连接上实测成功，不能当作已完成云端监控。
+*注意：Analytics SQL 可能采样或延迟，且 D1 数据包含手工迁移和验证 SQL，不应把窗口内所有行读写都算作 Cron。* 可以通过查询文本、执行时段及应用日志区分操作；Worker 绑定的 `meta.rows_read/rows_written` 和 D1 Dashboard 可以用于交叉核对。
 
 Cloudflare 官方实时依据：
 - [Workers Free 额度](https://developers.cloudflare.com/workers/platform/limits/)
@@ -128,6 +128,8 @@ Cloudflare 官方实时依据：
 - 17:22 UTC：公网真实 smoke [Actions #41224199119](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41224199119)：`/health` HTTP 200 + `publicApi:false`，四个私有路径均 404。
 - 17:23 UTC：仅插入来源 `gln003-hn-small`，公共 HTTPS `hnrss.org/newest?count=5`，每 1 小时更新；只对该 Worker 启用 `*/5 * * * *` Cron。Cloudflare 官方说明新 Cron 最长约 15 分钟传播，因此**Cron API 显示成功不代表实际触发已成功**。
 - 17:27 UTC：GitHub Runner HTTP health 及私有路由复验成功；在**同一测试 Worker**上开启 Cloudflare Observability（100% invocation logs、查询参数脱敏）；Analytics SQL `logs.workersLogs` 实测 5 次 HTTP 访问，CPU **0–3ms**，HTTP 200/404 均无异常。这不代表 RSS 解析的 CPU。
+- 17:30–17:31 UTC：首个真实 Cron scheduled 调用触发，HNRSS 上游发生 8 秒请求超时，D1 记录 `fetch_timeout`、`retry_count=1` 和下次到期时间。Analytics SQL 取得该 scheduled **CPU 8ms、wall 9394ms**，未写入任何新闻；这证明失败记录与退避生效，但**不证明成功解析或稳定容量**。隔离 D1 `events.d1Queries` 可单独观察 lease claim、失败更新、积压计算的行读写，不能混入手工 SQL 观测成本。
+- 17:32 UTC：新增第二个公共测试 Atom 来源 `https://www.cloudflarestatus.com/history.atom` 作为真实外网对照；仅 2 个来源，没有放开公共新闻接口。
 - D1 REST SQL 查询每条响应包含 `meta.rows_read` / `meta.rows_written`，且 Cloudflare Analytics SQL `events.d1Queries` 成功查询该独立数据库的记录（例如单条 test-source INSERT 产生 5 行写入）；**手动 REST SQL 查询与 Worker Cron SQL 必须分离统计**。
 - 后续待验证：真正 scheduled 事件、RSS 成功与幂等、错误恢复、scheduled CPU（及冷暖差异）、D1 采集读写计量和实测容量。不得把本节当成全部验收通过。
 
