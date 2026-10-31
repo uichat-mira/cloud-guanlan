@@ -118,21 +118,23 @@ export async function collectDue(env:PocEnv,timestamp:number):Promise<CollectOut
     if (!source) break;
     if(source.retry_count>0) retries++;
     processed++;
+    let news:ReturnType<typeof parseWithFastXml>;
     try {
       const xml=await fetchLimited(source.url,req=>env.TEST_FEED_FETCHER?env.TEST_FEED_FETCHER.fetch(req):fetch(req));
-      const news=parseWithFastXml(xml,source.url);
+      news=parseWithFastXml(xml,source.url);
       if(!news.length) throw new Error("empty_feed");
-      const result=await persistSuccess(env,source,logicalNow(),news);
-      if(result.lost) {leaseConflicts++;continue;}
-      inserted+=result.inserted;
-      if(source.retry_count>0) recovered++;
     } catch(error) {
-      // D1 failure is a service failure, not an upstream failure: never report
-      // false success, and retain the lease for crash/expiry recovery.
       const ok=await persistFailure(env,source,logicalNow(),error);
       if(!ok) {leaseConflicts++;continue;}
       errors++;
+      continue;
     }
+    // Persistence failures propagate and preserve the lease for expiry/retry:
+    // they are not reclassified as upstream fetch errors.
+    const result=await persistSuccess(env,source,logicalNow(),news);
+    if(result.lost) {leaseConflicts++;continue;}
+    inserted+=result.inserted;
+    if(source.retry_count>0) recovered++;
   }
   const now=logicalNow();
   const backlog=await env.DB.prepare(`
