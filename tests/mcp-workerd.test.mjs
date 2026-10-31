@@ -294,6 +294,49 @@ test("a database read failure is an explicit tool error, not empty-news success"
   });
 });
 
+test("long article URLs preserve distinct stable identities and exact fetchable links", async () => {
+  await withWorker("dist/mcp-test-worker.mjs", FIXTURE_BINDINGS, async ({ mf, db }) => {
+    await seed(db);
+    const prefix = "https://example.com/story?" + "a".repeat(2100);
+    const urls = [prefix + "-first", prefix + "-second"];
+    for (let i = 0; i < urls.length; i++) {
+      await db.prepare("INSERT INTO poc_news (url,source_id,title,summary,published_at,ingested_at) VALUES (?,?,?,?,?,?)")
+        .bind(urls[i], "feed-1", "Long URL " + i, "", null, "2026-11-01T00:00:00.000Z").run();
+    }
+    const { client } = await connect(mf, "fixture-consumer-1", {
+      versionNegotiation: { mode: { pin: "2026-07-28" } },
+    });
+    try {
+      const read = () => client.callTool({ name: "guanlan_news_recent", arguments: { limit: 10 } });
+      const response = await read();
+      assert.equal(response.isError, undefined);
+      const selected = response.structuredContent.items.filter(item => urls.includes(item.url));
+      assert.equal(selected.length, 2);
+      assert.deepEqual(new Set(selected.map(item => item.url)), new Set(urls));
+      assert.notEqual(selected[0].id, selected[1].id);
+      for (const item of selected) {
+        assert.match(item.id, /^gln:[a-f0-9]{64}$/);
+        assert.ok(item.url.length > 2048);
+      }
+      const again = await read();
+      assert.deepEqual(
+        again.structuredContent.items.filter(item => urls.includes(item.url)).map(item => item.id),
+        selected.map(item => item.id),
+      );
+
+      // A row beyond the output bound fails explicitly; no truncated link.
+      await db.prepare("INSERT INTO poc_news (url,source_id,title,summary,published_at,ingested_at) VALUES (?,?,?,?,?,?)")
+        .bind("https://example.com/" + "z".repeat(5000), "feed-1", "Overlong link", "", null, "2026-11-02T00:00:00.000Z").run();
+      const overlong = await read();
+      assert.equal(overlong.isError, true);
+      assert.match(overlong.content[0].text, /guanlan_news_unavailable/);
+      assert.equal(overlong.structuredContent, undefined);
+    } finally {
+      await client.close();
+    }
+  });
+});
+
 test("the deployed default worker has no MCP fixture fallback and stays closed", async () => {
   await withWorker("dist/worker.mjs", {}, async ({ mf, db }) => {
     await seed(db);
