@@ -23,7 +23,7 @@ const safeFailure = (error:unknown): string => {
   return "fetch_or_parse_error"; // never persist arbitrary upstream URLs, tokens, or response content
 };
 
-async function fetchLimited(urlString:string, fetcher:(req:Request)=>Promise<Response>):Promise<string> {
+export async function fetchLimited(urlString:string, fetcher:(req:Request)=>Promise<Response>):Promise<string> {
   const u = new URL(urlString);
   if (u.protocol !== "https:" || u.username || u.password ||
       u.hostname === "localhost" || u.hostname.endsWith(".local")) throw new Error("invalid_source");
