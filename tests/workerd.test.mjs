@@ -39,6 +39,8 @@ test("real workerd scheduled handler writes into local D1 and is repeatable",asy
    assert.equal((await db.prepare("SELECT count(*) AS n FROM poc_news").first()).n,0);
    const outcome=await worker.scheduled({cron:"0 * * * *",scheduledTime:now});
    assert.equal(outcome.outcome,"ok");
+   const firstSource = await db.prepare("SELECT last_status, last_error FROM poc_sources WHERE id='feed1'").first();
+   assert.equal(firstSource.last_status,"succeeded", JSON.stringify(firstSource));
    assert.equal((await db.prepare("SELECT count(*) AS n FROM poc_news").first()).n,3);
    assert.equal((await db.prepare("SELECT last_status FROM poc_sources WHERE id='feed1'").first()).last_status,"succeeded");
    // A read must not implicitly refresh or write any data.
