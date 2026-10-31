@@ -2,7 +2,7 @@
 
 Guanlan's task contracts live **only in GitHub Issues**, using the Organization-wide [Work Item skill](https://github.com/uichat-mira/.github/blob/main/skills/create-work-item/SKILL.md), [Issue template](https://github.com/uichat-mira/.github/blob/main/.github/ISSUE_TEMPLATE/work-item.yml), [ID registry](https://github.com/uichat-mira/.github/blob/main/docs/governance/work-item-ids.md) and [lifecycle](https://github.com/uichat-mira/.github/blob/main/docs/governance/work-item-lifecycle.md).
 
-The proposed stable news-service domain prefix is **GLN** (`[GLN-001]`, etc.). **Do not allocate it until its Organization registry change is merged.** AGT continues to own actual shared Agent/Worker platform changes; GLN owns Guanlan-specific product/runtime work, including its repository's caller integration.
+The canonical Guanlan product/service prefix is **GLN** (`[GLN-001]`, etc.), registered in the Organization ID registry. Allocate only after checking for existing IDs across **all states and all repositories**, then re-check uniqueness after creation; no local counter. AGT continues to own shared Agent/Worker platform changes; GLN owns Guanlan product/runtime contracts, including its repository's caller integration.
 
 ## Contract per Issue
 
