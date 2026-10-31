@@ -1,6 +1,6 @@
 import { drizzle } from "drizzle-orm/d1";
 import { pocNews } from "./schema";
-import { parseWithFeedsmith } from "./parser";
+import { parseWithFastXml } from "./parser";
 
 type Source = { id: string; url: string; interval_hours: number };
 type Binding = { fetch(request: Request): Promise<Response> };
@@ -48,7 +48,7 @@ export async function collectDue(env: PocEnv, timestamp: number): Promise<{proce
   for (const source of sources.results) {
     try {
       const xml = await fetchLimited(source.url, req => env.TEST_FEED_FETCHER ? env.TEST_FEED_FETCHER.fetch(req) : fetch(req));
-      const news = parseWithFeedsmith(xml, source.url);
+      const news = parseWithFastXml(xml, source.url);
       if (!news.length) throw new Error("No usable feed items");
       // D1 + Drizzle integration; existing source is explicit and no user data is public.
       const db = drizzle(env.DB);
