@@ -21,7 +21,10 @@ const asDate = (raw: unknown): string | null => {
 };
 function normalizeUrl(raw: unknown, base: string): string | null {
   try {
-    const url = new URL(value(raw), base);
+    const candidate = value(raw);
+    // new URL("", base) resolves to the *feed URL*, which is not a news article.
+    if (!candidate) return null;
+    const url = new URL(candidate, base);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
     url.hash = "";
     // Preserve query string: removing arbitrary parameters can merge distinct articles.
