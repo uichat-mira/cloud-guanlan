@@ -8,6 +8,9 @@ import {
 export const MCP_RESOURCE_PATH = "/mcp";
 export const MCP_METADATA_PATH = "/.well-known/oauth-protected-resource/mcp";
 export const GUANLAN_REQUIRED_SCOPE = "guanlan.read";
+/** Cloud Auth service credentials have a deployment-neutral JWT issuer. */
+export const CLOUD_AUTH_TOKEN_ISSUER = "mira:cloud-auth";
+export const GUANLAN_SERVICE_AUDIENCE = "mira:cloud-guanlan";
 export const GUANLAN_MCP_SERVER_NAME = "cloud-guanlan";
 export const GUANLAN_MCP_SERVER_VERSION = "0.1.0-gln-004";
 
@@ -23,7 +26,10 @@ export type McpEnv = {
 export type McpConfig = {
   resourceUrl: URL;
   metadataUrl: string;
+  /** OAuth authorization-server URL advertised in RFC 9728 discovery. */
   issuer: string;
+  /** JWT issuer of Cloud Auth credentials, distinct from its OAuth URL. */
+  tokenIssuer: string;
   jwksUrl: URL;
   audience: string;
   requiredScopes: string[];
@@ -60,9 +66,7 @@ export function resolveMcpConfig(env: McpEnv): McpConfigResult {
   if (!resourceUrl) return { ok: false, reason: "mcp_resource_url" };
   if (resourceUrl.pathname !== MCP_RESOURCE_PATH) return { ok: false, reason: "mcp_resource_path" };
 
-  // Keep the configured issuer string byte-exact for JWT `iss` comparison and
-  // metadata advertisement; URL normalisation could add a trailing slash that
-  // Cloud Auth does not mint.
+  // This URL is for OAuth discovery, never for JWT `iss` comparison.
   const issuer = env.CLOUD_AUTH_ISSUER?.trim() ?? "";
   if (!secureUrl(issuer)) return { ok: false, reason: "cloud_auth_issuer" };
 
@@ -71,8 +75,12 @@ export function resolveMcpConfig(env: McpEnv): McpConfigResult {
 
   const audience = env.MCP_AUDIENCE?.trim() ?? "";
   if (!audience) return { ok: false, reason: "mcp_audience" };
-  if (withoutTrailingSlash(audience) !== withoutTrailingSlash(resourceUrl.href)) {
-    return { ok: false, reason: "mcp_audience_not_resource" };
+  // Current Cloud Auth service credentials use a named Guanlan audience.
+  // Resource-URI audiences are also supported for the separate future OAuth flow.
+  // Never allow a Shiyan/Relay/other service audience through configuration.
+  if (audience !== GUANLAN_SERVICE_AUDIENCE &&
+      withoutTrailingSlash(audience) !== withoutTrailingSlash(resourceUrl.href)) {
+    return { ok: false, reason: "mcp_audience_not_guanlan" };
   }
 
   const scopes = (env.MCP_REQUIRED_SCOPES?.trim() || GUANLAN_REQUIRED_SCOPE)
@@ -91,6 +99,7 @@ export function resolveMcpConfig(env: McpEnv): McpConfigResult {
       resourceUrl,
       metadataUrl: getOAuthProtectedResourceMetadataUrl(resourceUrl),
       issuer,
+      tokenIssuer: CLOUD_AUTH_TOKEN_ISSUER,
       jwksUrl,
       audience,
       requiredScopes: scopes,
