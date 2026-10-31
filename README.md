@@ -6,12 +6,14 @@
 
 观澜负责“采集和记账”，不负责“理解与决策”。外部 Agent 自行选择是否 Web Fetch 原文、是否采用新闻，并明确回写处理结果。
 
-> **当前阶段：GLN-001/002 基础采集 POC 已完成；GLN-003 在专属 Cloudflare Canary 实测了 Cron、采集、D1 与 CPU。尚未上线多用户业务服务或完成 Free CPU 稳定性验收。**
+> **当前阶段：GLN-001/002 基础采集 POC 已完成；GLN-003 在专属 Cloudflare Canary 实测了 Cron、采集、D1 与 CPU；GLN-004 已实现受 Cloud Auth 保护的远程 MCP 协议入口代码。尚未部署多用户业务服务，未完成真实 Cloud Auth 联调或 Free CPU 稳定性验收。**
 > 请勿将本 README 中的目标能力理解为已经上线的 API 或 Cloudflare 服务。
 
 ## 设计入口
 
 **[产品与服务设计 v0](docs/product-design.md)** 是本仓库产品决策、非目标、消费状态、授权边界及待决问题的单一真相源。README 只做概览，不重复维护完整契约。
+
+远程 MCP 是外部 Agent 的 canonical 集成入口；当前协议、Cloud Auth 边界、工具与未交付依赖见 [GLN-004 工程边界](docs/engineering/gln-004-mcp.md)。REST 不作为平行的 Agent API。
 
 ## 已确定的核心原则
 
@@ -45,7 +47,7 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-当前 [GLN-003](https://github.com/uichat-mira/cloud-guanlan/issues/6) 正在完成 Workers + D1 的隔离实测及性能优化。专属测试环境真实执行过 Cron、Atom/RSS 采集和 D1 写入，**但它不是公开新闻 API，没有 Cloud Auth 或生产数据库接入，也未通过 Free 长期容量验收**。
+当前 [GLN-003](https://github.com/uichat-mira/cloud-guanlan/issues/6) 正在完成 Workers + D1 的隔离实测及性能优化。专属测试环境真实执行过 Cron、Atom/RSS 采集和 D1 写入，**但它不是公开新闻 API，没有 Cloud Auth 或生产数据库接入，也未通过 Free 长期容量验收**。[GLN-004](https://github.com/uichat-mira/cloud-guanlan/issues/8) 的远程 MCP 入口仍是待审阅代码，未部署、未接入真实 Cloud Auth。
 
 - [仓库工程约束](AGENTS.md)
 - [Issue 任务卡与付费 OpenCode Worker 使用说明](docs/engineering/work-items.md)
