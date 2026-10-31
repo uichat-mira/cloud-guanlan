@@ -59,3 +59,7 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 ## License
 
 [MIT](LICENSE)
+
+## Cloudflare 隔离验收（GLN-003）
+
+[GLN-003 工程手册与证据状态](docs/engineering/gln-003-cloudflare-canary.md) 描述隔离 Workers/D1、账号 Free 计划核验和 CPU/行用量测量。**必须先验证实际账号 Free 计划；当前未部署云端资源。** `npm run test:canary` / `npm run dry-run:canary` 仅验证隔离配置和真实应用打包，不产生云端副作用。
