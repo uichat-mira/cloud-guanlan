@@ -15,12 +15,12 @@
 - **T3 Worker/D1**：真实 Miniflare / workerd、`getWorker().scheduled()`、本地 D1 迁移、同 URL 去重、到期调度、不因 GET 刷新、上游 503 后保留原数据、响应体上限。
 - **解析基准**：一个 workerd 进程内，用 5 / 40 篇合成 RSS 条目分别执行两种解析器各 12 次，报告中位和最慢 wall-time。仅供对照趋势，**不是 Cloudflare 计费 CPU，也不代表服务请求的总 CPU 开销**。
 - **Wrangler dry-run**：无凭证、不部署，验证 bundle/兼容性。
-- **CI 与锁文件**：本卡如未提交 npm lock，临时 Runner 自动生成并明确警告。正式选型前需要固定锁文件，禁止把这一阶段宣称完全可复现。
+- **CI 与锁文件**：已固定从真实 GitHub Runner 生成的 `package-lock.json`；CI 与 Worker 必须执行 `npm ci`，不得临时解析漂移依赖。
 
 ### 重现命令
 
 ```sh
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run check
 # 或独立运行 npm run test:integration、npm run test:benchmark、npm run dry-run
 ```
