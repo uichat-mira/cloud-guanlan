@@ -269,6 +269,7 @@ Mira Cloud Account / 授权消费者
 - [Mira Desktop](https://github.com/uichat-mira/mira-desktop/tree/dev)
 - [Cloudflare Workers Limits](https://developers.cloudflare.com/workers/platform/limits/)
 - [Cloudflare D1 Pricing](https://developers.cloudflare.com/d1/platform/pricing/)
+
 ## 12. 分阶段实施路线与验收关口（2026-11-01 维护者规划）
 
 > **规划层，不是任务台账。** 本节是第 11 节原始 POC 施工建议之后形成的最新交付顺序。**8 + 5 + 3 = 16** 是为估算和组织验收而划分的**候选工作包**，不是 16 张已获授权或已创建的 GitHub Issues；A/B/C 编号仅为本文内的路线索引，不是语义任务 ID。正式任务必须遵循 Mira Organization [create-work-item Skill](https://github.com/uichat-mira/.github/blob/main/skills/create-work-item/SKILL.md)，在各自归属仓库建立独立的 Issue 合同，实际数量依代码与验收证据调整。不得为追求预设卡数而人为拆分。
