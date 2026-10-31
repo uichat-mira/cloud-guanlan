@@ -1,0 +1,31 @@
+name: GLN-003 isolated CPU optimization bundle
+on:
+  push:
+    branches: [feat/gln-003-perf-bundle-stage]
+permissions:
+  contents: write
+jobs:
+  build-perf-bundle:
+    if: "!contains(github.event.head_commit.message, '[gln003-bundle-generated]')"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+      - run: npm ci
+      - name: Build identical optimized production handler
+        run: npm run build
+      - name: Stage on scratch branch only
+        run: |
+          mkdir -p deployment
+          cp dist/worker.mjs deployment/gln003-perf-worker.mjs
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add deployment/gln003-perf-worker.mjs
+          git diff --cached --quiet && exit 0
+          git commit -m "chore: isolated perf bundle [gln003-bundle-generated]"
+          git push origin HEAD:feat/gln-003-perf-bundle-stage
