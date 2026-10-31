@@ -107,14 +107,16 @@ async function persistFailure(env:PocEnv,source:Source,now:number,error:unknown)
 }
 
 /** Called by Cron only, never by GET. All source work is sequential and bounded. */
-export async function collectDue(env:PocEnv,timestamp:number):Promise<CollectOutcome> {
+export async function collectDue(env:PocEnv,_scheduledTime:number):Promise<CollectOutcome> {
   const wallStart=Date.now();
-  // scheduledTime is deterministic for tests; elapsed wall time covers slow fetches.
-  const logicalNow=()=>timestamp+Math.max(0,Date.now()-wallStart);
+  // scheduledTime is event metadata, not the time work actually starts.
+  // Cron delivery can be delayed; lease ownership and next-due timestamps
+  // must always use actual wall time to prevent immediately expired claims.
+  const actualNow=()=>Date.now();
   let processed=0,inserted=0,errors=0,leaseConflicts=0,recovered=0,retries=0;
   for(let i=0;i<MAX_SOURCES_PER_INVOCATION;i++) {
     if(Date.now()-wallStart >= INVOCATION_WALL_BUDGET_MS) break;
-    const source=await claimDue(env.DB,logicalNow());
+    const source=await claimDue(env.DB,actualNow());
     if (!source) break;
     if(source.retry_count>0) retries++;
     processed++;
@@ -124,19 +126,19 @@ export async function collectDue(env:PocEnv,timestamp:number):Promise<CollectOut
       news=parseWithFastXml(xml,source.url);
       if(!news.length) throw new Error("empty_feed");
     } catch(error) {
-      const ok=await persistFailure(env,source,logicalNow(),error);
+      const ok=await persistFailure(env,source,actualNow(),error);
       if(!ok) {leaseConflicts++;continue;}
       errors++;
       continue;
     }
     // Persistence failures propagate and preserve the lease for expiry/retry:
     // they are not reclassified as upstream fetch errors.
-    const result=await persistSuccess(env,source,logicalNow(),news);
+    const result=await persistSuccess(env,source,actualNow(),news);
     if(result.lost) {leaseConflicts++;continue;}
     inserted+=result.inserted;
     if(source.retry_count>0) recovered++;
   }
-  const now=logicalNow();
+  const now=actualNow();
   const pending=await env.DB.prepare(`
     SELECT COUNT(*) AS n, MIN(due_at) AS oldest FROM poc_sources
     WHERE due_at <= ? AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
