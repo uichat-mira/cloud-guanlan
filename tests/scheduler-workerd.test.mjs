@@ -142,3 +142,19 @@ test("oversized feed and malformed response fail safely, preserving next eligibl
     assert.equal((await db.prepare("SELECT last_status FROM poc_sources WHERE id='feed-c'").first()).last_status,"succeeded");
   });
 });
+
+test("source interval remains hourly configurable regardless of five-minute wake",async()=>{
+  let calls=0;
+  await withWorker(async()=>{calls++;return new Response(rss(1));},async({db,worker})=>{
+    await seed(db,"feed-a","2026-10-31T00:00:00.000Z",3);
+    assert.equal((await tick(worker)).outcome,"ok");
+    const first=await db.prepare("SELECT due_at FROM poc_sources WHERE id='feed-a'").first();
+    assert(Date.parse(first.due_at)>=now+3*3_600_000);
+    assert(Date.parse(first.due_at)<now+3*3_600_000+2_000);
+    assert.equal((await tick(worker,now+2*3_600_000)).outcome,"ok");
+    assert.equal(calls,1,"Cron does not override the configured source interval");
+    assert.equal((await tick(worker,now+3*3_600_000+2_000)).outcome,"ok");
+    assert.equal(calls,2);
+    assert.equal((await count(db)).n,1,"same news URL remains idempotent");
+  });
+});
