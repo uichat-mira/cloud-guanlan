@@ -28,7 +28,7 @@ export const NEWS_INPUT_SCHEMA = z.object({
 });
 
 export const NEWS_ITEM_SCHEMA = z.object({
-  id: z.string().describe("Stable SHA-256 identifier derived from the complete canonical article URL."),
+  id: z.string().describe("Stable canonical article URL identifier (untruncated)."),
   title: z.string(),
   summary: z.string(),
   url: z.string(),
