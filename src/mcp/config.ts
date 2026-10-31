@@ -58,8 +58,9 @@ const withoutTrailingSlash = (value: string) => value.endsWith("/") ? value.slic
 
 /**
  * Resolves the fail-closed resource-server boundary from deployment bindings.
- * No value is defaulted to a real Mira or third-party trust anchor: an absent
- * or malformed setting leaves the /mcp surface unconfigured rather than open.
+ * OAuth authorization-server/JWKS bindings are explicit; the JWT issuer is
+ * the canonical deployment-neutral Cloud Auth identity. Missing or malformed
+ * configuration leaves /mcp unconfigured rather than open.
  */
 export function resolveMcpConfig(env: McpEnv): McpConfigResult {
   const resourceUrl = secureUrl(env.MCP_RESOURCE_URL?.trim() ?? "");
