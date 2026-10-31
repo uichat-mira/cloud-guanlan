@@ -13,7 +13,12 @@ async function withWorker(fetcher, run){
  });
  try{
    const db=await mf.getD1Database("DB");
-   await db.exec(await readFile("migrations/0001_poc.sql","utf8"));
+   // D1 exec() processes each line separately on this runtime. Apply the same
+   // real DDL statements individually; Wrangler still owns migration sequencing.
+   const sql = await readFile("migrations/0001_poc.sql","utf8");
+   for(const statement of sql.split(";").map(s=>s.trim()).filter(Boolean)){
+     await db.prepare(statement).run();
+   }
    await run({mf,db});
  }finally{await mf.dispose();}
 }
