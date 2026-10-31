@@ -29,3 +29,12 @@ jobs:
           git diff --cached --quiet && exit 0
           git commit -m "chore: stage GLN-003 bundle [gln003-bundle-generated]"
           git push origin HEAD:feat/gln-003-bundle-staging
+      - name: Public HTTP canary smoke (read-only; no secrets)
+        env:
+          GLN003_CANARY_URL: https://cloud-guanlan-gln003-canary.dangjingtao.workers.dev
+        run: |
+          for n in 1 2 3 4 5 6; do
+            node scripts/gln003-smoke.mjs && exit 0
+            sleep 6
+          done
+          exit 1
