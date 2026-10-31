@@ -137,18 +137,14 @@ export async function collectDue(env:PocEnv,timestamp:number):Promise<CollectOut
     if(source.retry_count>0) recovered++;
   }
   const now=logicalNow();
-  const backlog=await env.DB.prepare(`
-    SELECT COUNT(*) AS n FROM poc_sources
+  const pending=await env.DB.prepare(`
+    SELECT COUNT(*) AS n, MIN(due_at) AS oldest FROM poc_sources
     WHERE due_at <= ? AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-  `).bind(iso(now),iso(now)).first<{n:number}>();
-  const oldest=await env.DB.prepare(`
-    SELECT MIN(due_at) AS oldest FROM poc_sources
-    WHERE due_at <= ? AND (lease_expires_at IS NULL OR lease_expires_at <= ?)
-  `).bind(iso(now),iso(now)).first<{oldest:string|null}>();
+  `).bind(iso(now),iso(now)).first<{n:number;oldest:string|null}>();
   return {
     processed, inserted, errors, leaseConflicts, recovered, retries,
-    backlog:backlog?.n??0,
-    oldestOverdueSeconds:oldest?.oldest?Math.max(0,Math.floor((now-Date.parse(oldest.oldest))/1000)):0,
+    backlog:pending?.n??0,
+    oldestOverdueSeconds:pending?.oldest?Math.max(0,Math.floor((now-Date.parse(pending.oldest))/1000)):0,
     durationMs:Date.now()-wallStart,
     cpuMs:null // Cloudflare billed CPU is not observable from local workerd performance.now
   };
