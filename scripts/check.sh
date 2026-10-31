@@ -10,7 +10,7 @@ test -s LICENSE
 
 if [[ -f package.json ]]; then
   # No silent docs-only gate once runnable service code exists.
-  test -f package-lock.json || { echo "Missing package-lock.json for npm project" >&2; exit 1; }
+  test -f package-lock.json || { echo "Missing checked-in package-lock.json" >&2; exit 1; }
   command -v node >/dev/null
   command -v npm >/dev/null
   node --version

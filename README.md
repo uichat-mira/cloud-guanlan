@@ -6,7 +6,7 @@
 
 观澜负责“采集和记账”，不负责“理解与决策”。外部 Agent 自行选择是否 Web Fetch 原文、是否采用新闻，并明确回写处理结果。
 
-> **当前阶段：产品设计已记录，尚未实现或部署。**
+> **当前阶段：GLN-001 本地 Workers/D1 技术选型 POC 施工中，尚未实现完整业务服务或部署。**
 > 请勿将本 README 中的目标能力理解为已经上线的 API 或 Cloudflare 服务。
 
 ## 设计入口
@@ -45,11 +45,12 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-当前有产品设计以及基础工程 CI / 付费 Worker 派工配置，但还没有 Worker 业务代码、API、D1 数据库迁移或上线部署；仓库文档与 CI 脚手架不能替代运行验收。
+正在实现 [GLN-001](https://github.com/uichat-mira/cloud-guanlan/issues/2) 的技术选型 POC：仅含 /health 诊断、测试用 D1 迁移、最小按时采集和两种 Feed 解析器对照；**不是公开新闻 API，也没有 Cloud Auth 或生产数据库接入**。没有云上部署，模拟运行不能证明免费计划的真实配额。
 
 - [仓库工程约束](AGENTS.md)
 - [Issue 任务卡与付费 OpenCode Worker 使用说明](docs/engineering/work-items.md)
-- `bash scripts/check.sh`：文档期只做明确的脚手架检查；引入运行时代码后必须执行完整 `npm run check`。
+- `bash scripts/check.sh`：有运行时代码后执行完整 `npm run check`（类型、解析、真实 workerd/D1 集成、Wrangler dry-run、同环境基准）。
+- [GLN-001 技术证据](docs/engineering/gln-001-poc.md)：运行结果、选型结论和剩余限制。
 - `.github/workflows/mira-external-worker.yml`：可信 Issue 评论触发**付费** OpenCode Worker，交付 Draft PR 到 `dev`，不自动合并。
 - `.github/workflows/ci.yml`：Mira Gate 与分支流程检查，执行结果以真实 Actions 为准。
 
