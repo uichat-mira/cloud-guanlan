@@ -6,21 +6,18 @@ const MAX_ITEMS = 40;
 // Keep only the article fields we actually persist. In particular, Atom
 // <content> and publisher-specific metadata can be much larger than the
 // title/summary/link set; do not construct those unused subtrees in JS.
-const ARTICLE_FIELDS: Readonly<Record<string,ReadonlySet<string>>> = {
-  "feed.entry": new Set(["title","summary","published","updated","link"]),
-  "rss.channel.item": new Set(["title","description","link","pubDate","dc:date"]),
-  "rdf:RDF.item": new Set(["title","description","link","pubDate","dc:date"])
-};
+// These elements are not consumed by the Guanlan news-index contract in RSS,
+// Atom or RDF. Leave required link/title/summary/date elements untouched.
+const UNUSED_XML_TAGS = new Set([
+  "content", "content:encoded", "author", "contributor", "category", "rights",
+  "guid", "id", "media:content", "media:group"
+]);
 const xmlParser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
   processEntities: false,
   trimValues: true,
-  updateTag: (tagName, jPath) => {
-    const separator = jPath.lastIndexOf(".");
-    const articleParent = ARTICLE_FIELDS[jPath.slice(0,separator)];
-    return articleParent && !articleParent.has(tagName) ? false : tagName;
-  }
+  updateTag: tagName => UNUSED_XML_TAGS.has(tagName) ? false : tagName
 });
 const value = (input: unknown): string => {
   if (typeof input === "string" || typeof input === "number") return String(input).trim();
