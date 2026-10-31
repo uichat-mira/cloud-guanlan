@@ -19,7 +19,7 @@ CREATE TABLE guanlan_consumers (
 );
 CREATE INDEX idx_guanlan_consumers_account ON guanlan_consumers(account_id);
 
--- A source is stored/crawled once in poc_sources; account preferences do not
+-- A source is stored/crawled once in poc_sources. Account preferences do not
 -- override its global scheduler fields in this migration.
 CREATE TABLE guanlan_account_subscriptions (
   account_id TEXT NOT NULL,
