@@ -51,6 +51,8 @@ test("real workerd scheduled handler writes into local D1 and is repeatable",asy
    await worker.scheduled({cron:"*/5 * * * *",scheduledTime:now});
    assert.equal(requests,1); // not due; no duplicate fetch
    assert.equal((await db.prepare("SELECT count(*) AS n FROM poc_news").first()).n,3);
+   // Do not fake clock advancement with scheduledTime: mark source due in D1.
+   await db.prepare("UPDATE poc_sources SET due_at=? WHERE id=?").bind(new Date(Date.now()-1_000).toISOString(),"feed1").run();
    await worker.scheduled({cron:"*/5 * * * *",scheduledTime:now+3601_000});
    assert.equal(requests,2);
    assert.equal((await db.prepare("SELECT count(*) AS n FROM poc_news").first()).n,3); // URL dedup
@@ -64,6 +66,7 @@ test("HTTP error is preserved on source without destroying saved news",async()=>
   await seed(db);
   const worker=await mf.getWorker();
   await worker.scheduled({cron:"*/5 * * * *",scheduledTime:now});
+  await db.prepare("UPDATE poc_sources SET due_at=? WHERE id=?").bind(new Date(Date.now()-1_000).toISOString(),"feed1").run();
   await worker.scheduled({cron:"*/5 * * * *",scheduledTime:now+3601_000});
   const row=await db.prepare("SELECT last_status,last_error FROM poc_sources WHERE id='feed1'").first();
   assert.equal(row.last_status,"failed");
