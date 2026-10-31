@@ -1,12 +1,13 @@
 import { createApp, type GuanlanEnv } from "../src/app";
 import { createFixtureVerifier } from "../src/mcp/auth";
 import { createMcpRuntime } from "../src/mcp/runtime";
+import { CLOUD_AUTH_TOKEN_ISSUER } from "../src/mcp/config";
 import { FIXTURE_TOKENS } from "./mcp-fixtures";
 
 const app = createApp({
   resolveMcpRuntime: env => createMcpRuntime(env, {
     verifier: createFixtureVerifier(FIXTURE_TOKENS, {
-      issuer: env.CLOUD_AUTH_ISSUER ?? "",
+      issuer: CLOUD_AUTH_TOKEN_ISSUER,
       audience: env.MCP_AUDIENCE ?? "",
     }),
   }),
