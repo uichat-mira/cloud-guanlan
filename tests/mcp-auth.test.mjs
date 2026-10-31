@@ -14,6 +14,7 @@ import {
   FIXTURE_TOKENS,
   MCP_TEST_AUDIENCE,
   MCP_TEST_ISSUER,
+  MCP_TEST_TOKEN_ISSUER,
   MCP_TEST_JWKS_URL,
   MCP_TEST_RESOURCE_URL,
   MCP_TEST_SCOPE,
@@ -41,7 +42,7 @@ const READER = {
   },
 };
 const fixtureVerifier = createFixtureVerifier(FIXTURE_TOKENS, {
-  issuer: MCP_TEST_ISSUER,
+  issuer: MCP_TEST_TOKEN_ISSUER,
   audience: MCP_TEST_AUDIENCE,
 });
 
@@ -62,6 +63,7 @@ test("config requires explicit resource, Cloud Auth issuer/JWKS, audience and sc
   assert.equal(resolved.ok, true);
   assert.equal(resolved.config.resourceUrl.href, MCP_TEST_RESOURCE_URL);
   assert.equal(resolved.config.issuer, MCP_TEST_ISSUER);
+  assert.equal(resolved.config.tokenIssuer, MCP_TEST_TOKEN_ISSUER);
   assert.equal(resolved.config.jwksUrl.href, MCP_TEST_JWKS_URL);
   assert.deepEqual(resolved.config.requiredScopes, [MCP_TEST_SCOPE]);
 
@@ -71,6 +73,8 @@ test("config requires explicit resource, Cloud Auth issuer/JWKS, audience and sc
     assert.equal(resolveMcpConfig(env).ok, false, key);
   }
   assert.equal(resolveMcpConfig({ ...ENV, MCP_AUDIENCE: "https://api.shiyan.example.com" }).ok, false);
+  assert.equal(resolveMcpConfig({ ...ENV, MCP_AUDIENCE: MCP_TEST_RESOURCE_URL }).ok, true);
+  assert.equal(resolveMcpConfig({ ...ENV, MCP_AUDIENCE: "mira:cloud-shiyan" }).ok, false);
 });
 
 test("no token gets 401 with RFC 9728 resource metadata discovery", async () => {
@@ -206,43 +210,87 @@ test("missing modern standard headers are rejected as protocol errors", async ()
   assert.equal((await response.json()).error.code, -32020);
 });
 
-test("real Cloud Auth verifier binds issuer, audience, expiry and consumer claim", async () => {
-  const { publicKey, privateKey } = await generateKeyPair("ES256");
-  const jwk = { ...(await exportJWK(publicKey)), kid: "test-key" };
+test("Cloud Auth EdDSA credentials bind the real JWT issuer, Guanlan audience, scope array and consumer", async () => {
+  const { publicKey, privateKey } = await generateKeyPair("EdDSA", { crv: "Ed25519" });
+  const jwk = { ...(await exportJWK(publicKey)), kid: "test-key", alg: "EdDSA" };
   const keySet = createLocalJWKSet({ keys: [jwk] });
   const verifier = createCloudAuthVerifier({
-    issuer: MCP_TEST_ISSUER,
+    issuer: MCP_TEST_TOKEN_ISSUER,
     audience: MCP_TEST_AUDIENCE,
     jwksUrl: new URL(MCP_TEST_JWKS_URL),
     consumerClaim: "consumer_id",
     keySet,
   });
-  const sign = (claims = {}, header = {}) => new SignJWT({
-    scope: MCP_TEST_SCOPE,
+  const sign = (claims = {}) => new SignJWT({
+    scope: [MCP_TEST_SCOPE],
     consumer_id: "consumer-9",
+    device_id: "desktop-test-device",
     ...claims,
   })
-    .setProtectedHeader({ alg: "ES256", kid: "test-key", ...header })
-    .setIssuer(claims.iss ?? MCP_TEST_ISSUER)
+    .setProtectedHeader({ alg: "EdDSA", typ: "JWT", kid: "test-key" })
+    .setIssuer(claims.iss ?? MCP_TEST_TOKEN_ISSUER)
     .setAudience(claims.aud ?? MCP_TEST_AUDIENCE)
     .setSubject(claims.sub ?? "account-9")
+    .setIssuedAt()
+    .setNotBefore("0s")
     .setExpirationTime(claims.exp ?? "1h")
     .sign(privateKey);
 
-  const principal = await verifier.verifyAccessToken(await sign());
+  const token = await sign();
+  const principal = await verifier.verifyAccessToken(token);
+  assert.equal(principal.issuer, MCP_TEST_TOKEN_ISSUER);
+  assert.equal(principal.audience, MCP_TEST_AUDIENCE);
   assert.equal(principal.accountId, "account-9");
   assert.equal(principal.consumerId, "consumer-9");
   assert.deepEqual(principal.scopes, [MCP_TEST_SCOPE]);
 
+  // Prove the SDK's expectedResource gate works with a named Cloud Auth
+  // service audience: the actual MCP resource URL is bound separately.
+  const resolved = createMcpRuntime({ ...ENV, DB }, { verifier, reader: READER });
+  assert.equal(resolved.ok, true);
+  const call = async bearer => resolved.runtime.fetch(new Request(MCP_TEST_RESOURCE_URL, {
+    method: "POST",
+    headers: {
+      host: "127.0.0.1",
+      authorization: "Bearer " + bearer,
+      "content-type": "application/json",
+      accept: "application/json, text/event-stream",
+      "MCP-Protocol-Version": "2026-07-28",
+      "Mcp-Method": "tools/call",
+      "Mcp-Name": WHOAMI_TOOL_NAME,
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/call",
+      params: {
+        name: WHOAMI_TOOL_NAME,
+        arguments: {},
+        _meta: {
+          "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+          "io.modelcontextprotocol/clientInfo": { name: "gln004-signed", version: "1" },
+          "io.modelcontextprotocol/clientCapabilities": {},
+        },
+      },
+    }),
+  }));
+  const accepted = await call(token);
+  assert.equal(accepted.status, 200);
+  assert.equal((await accepted.json()).result.structuredContent.consumerId, "consumer-9");
+
+  const wrongScope = await call(await sign({ scope: ["news.write"] }));
+  assert.equal(wrongScope.status, 403);
   const rejects = [
     sign({ iss: "https://relay.example.com" }),
-    sign({ aud: "https://api.relay.example.com" }),
+    sign({ aud: "mira:cloud-relay-transport" }),
+    sign({ aud: "mira:cloud-shiyan" }),
     sign({ sub: "" }),
     sign({ consumer_id: "" }),
+    sign({ scope: [123] }),
     sign({ exp: Math.floor(Date.now() / 1000) - 60 }),
   ];
-  for (const token of rejects) {
-    await assert.rejects(verifier.verifyAccessToken(await token), /invalid_token/);
+  for (const candidate of rejects) {
+    await assert.rejects(verifier.verifyAccessToken(await candidate), /invalid_token/);
   }
 });
 
