@@ -11,7 +11,7 @@ Public sources and private subscriptions must not be conflated. Personal subscri
 ## Source of truth and work item contract
 
 - The root product design owns product boundaries; the **GitHub Issue** owns scope, deliverable, acceptance evidence and decisions for one implementation unit.
-- The Organization's `work-item-ids.md` is the only semantic ID registry. Do **not** invent a local ticket-number counter or shadow work-item list. Guanlan's proposed `GLN` prefix only becomes canonical after the Organization registry change is approved and merged.
+- The Organization's `work-item-ids.md` is the only semantic ID registry. Do **not** invent a local ticket-number counter or shadow work-item list. Guanlan's `GLN` prefix is registered in the current Organization work-item ID registry; allocate unique IDs by searching all Organization Issues and confirming pre/post creation.
 - Project Status `Todo → In Progress → Done` is the sole lifecycle projection; do not use labels or markdown task tables to mirror it.
 - Before code changes, read the Issue, current design, related implementation and authorization boundaries; distinguish verified reality from planned capabilities.
 - Any contract changes must update the owning Issue, not an ad hoc alternative task board.
