@@ -78,6 +78,6 @@ npm run check
 
 - 18:33 UTC，Cloudflare API 对**唯一 Canary Worker** 执行 `PUT schedules=[]` 并 `GET` 确认为 `[]`；Cron 传播可能存在最多约 15 分钟延迟，但 profiler 自身也在 9 次后停止任何网络抓取。
 - 同一会话重新上传先前真实应用 bundle（Git blob `cff903cf9b07493803ca3188eb3268eb36084f00`），确认 `DB` 仍绑定同一个专属 D1，`schedules=[]`。Profile Worker **不再是线上运行版本**。
-- 临时调整的 `gln003-controlled-two` 到期时间恢复到 `2026-10-31T18:45:55.344Z`。D1 新闻始终保留最终 **25 条 Atom + 2 条 RSS，共 27 唯一 URL**。诊断表待证据写入后删除，不扩散到正式数据库。
+- 临时调整的 `gln003-controlled-two` 到期时间恢复到 `2026-10-31T18:45:55.344Z`。D1 新闻始终保留最终 **25 条 Atom + 2 条 RSS，共 27 唯一 URL**。本次 9 条样本和 CPU 已写入此文档后，专属 D1 中的两张临时 `gln003_profile_*` 表均已删除；再次检查数据库仅保留 `poc_sources`、`poc_news` 及 Cloudflare 内部 `_cf_KV`。诊断结构不扩散到正式数据库。
 - 本次没有更新 `dev/test/prod`，没有触碰其他 Workers、拾言数据库或生产域名。GLN-003 Issue #6 保持 **OPEN**，性能验收不可宣称通过。
 
