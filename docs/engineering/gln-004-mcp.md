@@ -48,17 +48,17 @@ The deployed Worker stays **closed** unless all of these bindings resolve:
 | Binding | Meaning |
 | --- | --- |
 | `MCP_RESOURCE_URL` | Canonical public resource URL; path must be exactly `/mcp` |
-| `CLOUD_AUTH_ISSUER` | Mira Cloud Auth issuer URL, used only as the authorization server |
+| `CLOUD_AUTH_ISSUER` | HTTPS OAuth authorization-server URL advertised in protected-resource discovery (not the JWT `iss`) |
 | `CLOUD_AUTH_JWKS_URL` | Cloud Auth public JWKS URL for access-token verification |
-| `MCP_AUDIENCE` | Guanlan-specific audience; must match the resource URL |
+| `MCP_AUDIENCE` | Exact Guanlan JWT audience: current Cloud Auth-shaped service value `mira:cloud-guanlan`, or the canonical `/mcp` resource URL for future RFC 8707 resource-URI tokens |
 | `MCP_REQUIRED_SCOPES` | Optional, default `guanlan.read`; space-separated OAuth scope tokens |
 | `MCP_CONSUMER_CLAIM` | Optional, default `consumer_id`; stable consumer claim in the token |
 
 - Missing or malformed configuration makes `/mcp` and its metadata return
   `503 {"error":"mcp_not_configured"}`. There is no anonymous or fixture fallback.
 - URLs must be HTTPS (localhost HTTP is allowed only for local testing).
-- `MCP_AUDIENCE` must be the Guanlan resource URL; an audience minted for Shiyan or
-  Relay is therefore rejected by configuration and by token verification.
+- The JWT signing issuer is the **deployment-neutral `mira:cloud-auth`**, separate from the OAuth authorization-server URL. The deployed JWT verifier allows only Cloud Auth Ed25519/`EdDSA` signatures.
+- `MCP_AUDIENCE` accepts only the dedicated service audience `mira:cloud-guanlan` or the exact `/mcp` resource URL. Existing Shiyan/Relay audiences are rejected. The SDK `expectedResource` remains the canonical `/mcp` URL regardless of the JWT audience representation.
 - No secret is committed. JWKS is public key material; no Cloud Auth private key,
   client secret or device session is stored in this repository.
 
@@ -66,13 +66,13 @@ The deployed Worker stays **closed** unless all of these bindings resolve:
 
 `createCloudAuthVerifier` uses Cloud Auth's JWKS and requires:
 
-- exact `iss` matching `CLOUD_AUTH_ISSUER`;
+- exact JWT `iss = mira:cloud-auth`; protected-resource metadata separately advertises the configured HTTPS `CLOUD_AUTH_ISSUER` URL;
 - `aud` matching `MCP_AUDIENCE` / the Guanlan resource URL;
 - a numeric, unexpired `exp`;
 - a non-empty `sub` (Cloud Account identity);
 - a non-empty `consumer_id` claim (or the configured claim name);
-- the configured required scope after the SDK bearer gate;
-- an asymmetric JWKS signature (RS/ES/EdDSA/PS family).
+- the required scope after the SDK bearer gate: Cloud Auth-shaped `scope: string[]` and standard space-delimited OAuth `scope: string` are recognized; malformed scope arrays are rejected;
+- an EdDSA signature verified against the configured Cloud Auth Ed25519 JWKS.
 
 A failed verification is an opaque `401 invalid_token`; a valid token lacking the
 required scope is `403 insufficient_scope`. The verifier does **not** use a
@@ -91,10 +91,10 @@ Single source of truth: [`src/mcp/capabilities.ts`](../../src/mcp/capabilities.t
   `tools/list` and `tools/call`.
 - `guanlan_news_recent` reads the existing GLN-003 `poc_news` index with a `SELECT` only.
   It does not fetch feeds, claim leases, update source rows or write consumer state.
-- Output strings are bounded (title 500, summary 2 000, URL 2 048, source id 200),
+- Output strings are bounded (title 500, summary 2 000, URL 4 096, source id 200),
   request bodies are capped at 256 KiB, and tool argument elements are capped.
-- A D1/read failure returns `isError: true` with `guanlan_news_unavailable`; it does not
-  return an empty `items` array as if there were no news.
+- Full canonical URLs remain the unchanged stable `id` and `url` in returned data; URLs exceeding the output bound are **rejected as a tool error** rather than truncated or collapsed. No per-item hashing is introduced into the Free Worker read path.
+- A D1/read failure or oversized URL returns `isError: true` with `guanlan_news_unavailable`; it does not return an empty `items` array as if there were no news.
 - The current shared POC index has no per-user subscription rows yet. This tool is an
   authenticated read of the shared public-source index, not the future personalized
   subscription API. Per-user filtering arrives with the source/subscription work.
@@ -132,9 +132,11 @@ The gate includes:
 - `npm run typecheck`;
 - T1 auth/protocol/schema tests in `tests/mcp-auth.test.mjs`;
 - real workerd/Miniflare + D1 MCP tests in `tests/mcp-workerd.test.mjs`, covering:
-  modern pinned client discover/list/call, `2025-06-18` legacy client, no session id,
+  modern pinned client discover/list/call, both 2025 legacy clients, no session id,
   protocol-header rejection, 401/403 negatives, protected-resource metadata,
   read-only no-write proof, D1 failure mapping, and the closed default Worker;
+- signed Ed25519/EdDSA Cloud Auth-shaped JWT fixture with separate JWT issuer/OAuth URL, dedicated audience, `scope: string[]`, valid/invalid consumer, wrong-scope and wrong-audience cases;
+- long URLs with identical first 2,048 characters retain distinct exact IDs and links; oversized source URLs fail explicitly;
 - the existing GLN-001..003 parser, scheduler, Cron, lease, canary and Wrangler
   dry-run gates.
 
