@@ -22,4 +22,22 @@ for(const parse of parsers) {
     const poisoned=rss(1).replace("https://example.com/story/0?lang=en","javascript:alert(1)");
     assert.equal(parse(poisoned,"https://example.com/feed.xml").length,0);
   });
+  test(`${parse.name} only uses Atom alternate/default article links`,()=>{
+    const onlySelf = `<?xml version="1.0"?>
+      <feed xmlns="http://www.w3.org/2005/Atom">
+        <title>Test</title><id>urn:feed:one</id><updated>2026-10-31T00:00:00Z</updated>
+        <entry><id>urn:1</id><title>No article URL</title><updated>2026-10-31T00:00:00Z</updated>
+          <link rel="self" href="https://example.com/metadata/1" /></entry>
+      </feed>`;
+    assert.equal(parse(onlySelf,"https://example.com/atom.xml").length,0,
+      "Atom self link is metadata, not the article URL");
+    const withAlternate = onlySelf.replace(
+      '<link rel="self" href="https://example.com/metadata/1" />',
+      '<link rel="self" href="https://example.com/metadata/1" /><link rel="alternate" href="https://example.com/story/1" />'
+    );
+    const result = parse(withAlternate,"https://example.com/atom.xml");
+    assert.equal(result.length,1);
+    assert.equal(result[0].url,"https://example.com/story/1");
+  });
+
 }
