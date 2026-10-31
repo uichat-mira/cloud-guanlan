@@ -40,8 +40,11 @@ const result = (entries: Array<{title: unknown; summary: unknown; url: unknown; 
 };
 export function parseWithFeedsmith(input: string, source: string): NewsCandidate[] {
   const parsed = parseFeed(input, { maxItems: MAX_ITEMS });
-  if (parsed.format === "rss" || parsed.format === "rdf") {
-    return result((parsed.feed.items ?? []).map(i => ({title: i.title, summary: i.description, url: i.link, date: i.pubDate ?? i.dc?.date})), source);
+  if (parsed.format === "rss") {
+    return result((parsed.feed.items ?? []).map(i => ({title: i.title, summary: i.description, url: i.link, date: i.pubDate})), source);
+  }
+  if (parsed.format === "rdf") {
+    return result((parsed.feed.items ?? []).map(i => ({title: i.title, summary: i.description, url: i.link, date: null})), source);
   }
   if (parsed.format === "atom") {
     return result((parsed.feed.entries ?? []).map(i => ({
