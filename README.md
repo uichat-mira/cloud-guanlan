@@ -6,7 +6,7 @@
 
 观澜负责“采集和记账”，不负责“理解与决策”。外部 Agent 自行选择是否 Web Fetch 原文、是否采用新闻，并明确回写处理结果。
 
-> **当前阶段：GLN-001 本地 Workers/D1 技术选型 POC 施工中，尚未实现完整业务服务或部署。**
+> **当前阶段：GLN-001/002 基础采集 POC 已完成；GLN-003 在专属 Cloudflare Canary 实测了 Cron、采集、D1 与 CPU。尚未上线多用户业务服务或完成 Free CPU 稳定性验收。**
 > 请勿将本 README 中的目标能力理解为已经上线的 API 或 Cloudflare 服务。
 
 ## 设计入口
@@ -28,7 +28,7 @@
 
 ## 首选部署方向（待技术验证）
 
-以 **Cloudflare Workers Free + Cron Triggers + D1** 为第一候选，力求零额外费用、有限资源下的可靠服务。**尚未验证性能、额度或实际部署可行性；免费额度耗尽时的降级优先级仍由维护者决定。**
+以 **Cloudflare Workers Free + Cron Triggers + D1** 为第一候选，力求零额外费用、有限资源下的可靠服务；**这不排除未来上阿里云**，但大陆用户入口及新闻源出口可达性都必须真实验证，多 Worker/双部署暂不建设。**已验证隔离 Canary 的真实运行，但 10ms Free 单次 CPU 仍缺乏可靠余量；免费额度耗尽时的降级优先级仍由维护者决定。**
 
 不为首版默认引入 LLM、向量检索、浏览器抓取、内置 Agent 或额外付费基础设施。
 
@@ -45,7 +45,7 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-正在实现 [GLN-001](https://github.com/uichat-mira/cloud-guanlan/issues/2) 的技术选型 POC：仅含 /health 诊断、测试用 D1 迁移、最小按时采集和两种 Feed 解析器对照；**不是公开新闻 API，也没有 Cloud Auth 或生产数据库接入**。没有云上部署，模拟运行不能证明免费计划的真实配额。
+当前 [GLN-003](https://github.com/uichat-mira/cloud-guanlan/issues/6) 正在完成 Workers + D1 的隔离实测及性能优化。专属测试环境真实执行过 Cron、Atom/RSS 采集和 D1 写入，**但它不是公开新闻 API，没有 Cloud Auth 或生产数据库接入，也未通过 Free 长期容量验收**。
 
 - [仓库工程约束](AGENTS.md)
 - [Issue 任务卡与付费 OpenCode Worker 使用说明](docs/engineering/work-items.md)
@@ -62,4 +62,4 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## Cloudflare 隔离验收（GLN-003）
 
-[GLN-003 工程手册与证据状态](docs/engineering/gln-003-cloudflare-canary.md) 描述隔离 Workers/D1、账号 Free 计划核验和 CPU/行用量测量。**必须先验证实际账号 Free 计划；当前未部署云端资源。** `npm run test:canary` / `npm run dry-run:canary` 仅验证隔离配置和真实应用打包，不产生云端副作用。
+[GLN-003 工程手册与证据状态](docs/engineering/gln-003-cloudflare-canary.md) 记录专属 Workers/D1 Canary 的真实执行、CPU/行用量与安全收尾；[九次 CPU 三段剖析报告](docs/engineering/gln-003-cpu-profile.md) 记录解析与 D1 成本。**当前 Canary 保留但 Cron 关闭，不是产品上线。** `npm run test:canary` / `npm run dry-run:canary` 仅验证隔离配置和真实应用打包，不产生云端副作用。
