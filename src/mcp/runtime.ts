@@ -29,7 +29,7 @@ export function createMcpRuntime(env: McpRuntimeEnv, options: McpRuntimeOptions 
   const { config } = resolved;
   if (options.verifier || options.reader) {
     const verifier = options.verifier ?? createCloudAuthVerifier({
-      issuer: config.issuer,
+      issuer: config.tokenIssuer,
       audience: config.audience,
       jwksUrl: config.jwksUrl,
       consumerClaim: config.consumerClaim,
@@ -41,6 +41,7 @@ export function createMcpRuntime(env: McpRuntimeEnv, options: McpRuntimeOptions 
   const key = [
     config.resourceUrl.href,
     config.issuer,
+    config.tokenIssuer,
     config.jwksUrl.href,
     config.audience,
     config.requiredScopes.join(" "),
@@ -55,7 +56,7 @@ export function createMcpRuntime(env: McpRuntimeEnv, options: McpRuntimeOptions 
   if (existing) return existing;
 
   const verifier = createCloudAuthVerifier({
-    issuer: config.issuer,
+    issuer: config.tokenIssuer,
     audience: config.audience,
     jwksUrl: config.jwksUrl,
     consumerClaim: config.consumerClaim,
