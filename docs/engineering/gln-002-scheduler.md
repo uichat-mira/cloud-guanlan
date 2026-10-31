@@ -43,7 +43,12 @@ npm run check
 
 The fast unit tests cover interval validity, capped deterministic backoff and bounded Cron policy. The real Miniflare/workerd + D1 tests cover: concurrent Cron claim, two-source bounded batches and eventual progress for a third, failed source retry, stale-holder fencing after lease expiry, D1 transaction failure rollback and recovery, oversized/invalid feeds, idempotence and GET safety. CI verifies the actual Worker handler and D1 binding, not a mock database.
 
-**Evidence / run / package versions:** pending initial Actions run; this line will be updated after CI. Do not infer acceptance from source code alone.
+**GitHub Runner evidence (code commit `d7fb0695`):**
+
+- [Actions run 41219675762](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219675762): Repository Contract, Branch Policy, Mira Gate all **success**. Reproducible `npm ci`; `tsc --noEmit`; T1 **9/9**, real Miniflare/workerd + D1 T3 **9/9**, Wrangler dry-run and parsing comparison passed.
+- First implementation run [41219502927](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219502927) caught a stale assertion expecting free-form `oversized` text rather than the safe stored error category `feed_too_large`. The test now checks the explicit code while retaining its rejection/no-write assertion. The corrected run [41219566002](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219566002) was also green.
+- Reported Worker dry-run artifact at corrected-run baseline: **211.68 KiB / gzip 54.24 KiB**; does not include benchmark-only Feedsmith in the runtime bundle. The post-query-optimization run checks the updated version.
+- **These are only emulated workerd metrics and package size**. Cloudflare Free account billed CPU, D1 row usage and real network error rates have not been measured; no live deployment was performed.
 
 ## Explicitly deferred
 
