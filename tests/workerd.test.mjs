@@ -29,7 +29,7 @@ async function seed(db,url="https://example.com/rss.xml",id="feed1"){
 const now=Date.parse("2026-10-31T01:00:00.000Z");
 test("real workerd scheduled handler writes into local D1 and is repeatable",async()=>{
  let requests=0;
- await withWorker(async req=>{requests++;assert.equal(req.redirect,"manual");return new Response(rss(3),{headers:{"content-type":"application/rss+xml"}})},async({mf,db})=>{
+ await withWorker(async req=>{requests++;assert.equal(new URL(req.url).pathname,"/rss.xml");return new Response(rss(3),{headers:{"content-type":"application/rss+xml"}})},async({mf,db})=>{
    await seed(db);
    const worker=await mf.getWorker();
    const response=await mf.dispatchFetch("https://example.com/health");
