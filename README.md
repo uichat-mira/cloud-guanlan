@@ -45,7 +45,15 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-目前为文档初始化阶段：**无 Worker 代码、无 API、无数据库迁移、无 CI 验收、无线上部署**。后续在技术 POC 和 Issue 契约确认后，按照 [Mira Organization AGENTS](https://github.com/uichat-mira/.github/blob/main/AGENTS.md) 小步实现、用运行证据验收。新仓库现有默认分支为 **dev**。
+当前有产品设计以及基础工程 CI / 付费 Worker 派工配置，但还没有 Worker 业务代码、API、D1 数据库迁移或上线部署；仓库文档与 CI 脚手架不能替代运行验收。
+
+- [仓库工程约束](AGENTS.md)
+- [Issue 任务卡与付费 OpenCode Worker 使用说明](docs/engineering/work-items.md)
+- `bash scripts/check.sh`：文档期只做明确的脚手架检查；引入运行时代码后必须执行完整 `npm run check`。
+- `.github/workflows/mira-external-worker.yml`：可信 Issue 评论触发**付费** OpenCode Worker，交付 Draft PR 到 `dev`，不自动合并。
+- `.github/workflows/ci.yml`：Mira Gate 与分支流程检查，执行结果以真实 Actions 为准。
+
+后续按 [Mira Organization AGENTS](https://github.com/uichat-mira/.github/blob/main/AGENTS.md) 小步实现、用运行证据验收。仓库当前默认分支为 **dev**；尚未创建 `test` 或 `prod` 环境分支。
 
 ## License
 
