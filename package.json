@@ -3,7 +3,9 @@
   "private": true,
   "version": "0.0.0-poc",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "esbuild src/index.ts --bundle --platform=browser --format=esm --target=es2022 --outfile=dist/worker.mjs && esbuild src/parser.ts --bundle --platform=browser --format=esm --outfile=dist/parser.mjs && esbuild src/scheduler.ts --bundle --platform=browser --format=esm --outfile=dist/scheduler.mjs && esbuild tests/bench.worker.ts --bundle --platform=browser --format=esm --target=es2022 --outfile=dist/bench.mjs",
     "typecheck": "tsc --noEmit",
@@ -11,7 +13,11 @@
     "test:integration": "npm run build && node --test tests/workerd.test.mjs tests/scheduler-workerd.test.mjs",
     "test:benchmark": "npm run build && node tests/bench.mjs",
     "dry-run": "wrangler deploy --dry-run --outdir dist/wrangler",
-    "check": "npm run typecheck && npm run test:unit && npm run test:integration && npm run dry-run && npm run test:benchmark"
+    "check": "npm run typecheck && npm run test:unit && npm run test:integration && npm run dry-run && npm run test:benchmark && npm run test:canary && npm run dry-run:canary && npm run test:profile",
+    "test:canary": "node --test tests/gln003-config.test.mjs",
+    "dry-run:canary": "node scripts/gln003-config.mjs --dry-run && wrangler deploy --config dist/gln003/wrangler.json --dry-run --outdir dist/gln003/bundle",
+    "build:profile": "esbuild tests/gln003-profile.worker.ts --bundle --platform=browser --format=esm --target=es2022 --outfile=dist/gln003-profile.mjs",
+    "test:profile": "npm run build && npm run build:profile && node --test tests/gln003-profile.test.mjs"
   },
   "dependencies": {
     "drizzle-orm": "^0.44.0",

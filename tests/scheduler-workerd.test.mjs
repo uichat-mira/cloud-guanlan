@@ -220,3 +220,30 @@ test("late-delivered failed Cron schedules retry from actual failure time",async
       "First failure must remain inside the bounded retry window");
   });
 });
+
+test("bulk D1 ingestion retains all forty bounded articles, timestamps and URL idempotency",async()=>{
+  let requests=0;
+  await withWorker(async()=>{
+    requests++;
+    return new Response(rss(40),{headers:{"content-type":"application/rss+xml"}});
+  },async({db,worker})=>{
+    await seed(db);
+    assert.equal((await tick(worker)).outcome,"ok");
+    const countFirst=await count(db);
+    assert.equal(countFirst.n,40);
+    const first=await db.prepare("SELECT url,title,summary,published_at,source_id FROM poc_news WHERE url=?")
+      .bind("https://example.com/story/39?lang=en").first();
+    assert.equal(first.title,"Story 39");
+    assert.equal(first.summary,"Short summary 39");
+    assert.equal(first.published_at,"2026-10-30T00:00:00.000Z");
+    assert.equal(first.source_id,"feed-a");
+    await db.prepare("UPDATE poc_sources SET due_at=? WHERE id=?").bind(overdue,"feed-a").run();
+    assert.equal((await tick(worker)).outcome,"ok");
+    assert.equal(requests,2);
+    assert.equal((await count(db)).n,40,"bulk INSERT must retain URL deduplication");
+    const state=await db.prepare("SELECT last_status,retry_count,lease_token FROM poc_sources WHERE id='feed-a'").first();
+    assert.equal(state.last_status,"succeeded");
+    assert.equal(state.retry_count,0);
+    assert.equal(state.lease_token,null);
+  });
+});

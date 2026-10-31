@@ -3,7 +3,22 @@ import { XMLParser } from "fast-xml-parser";
 
 export type NewsCandidate = { title: string; summary: string; url: string; publishedAt: string | null };
 const MAX_ITEMS = 40;
-const xmlParser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: "@_", processEntities: false, trimValues: true });
+// Keep only the article fields we actually persist. In particular, Atom
+// <content> and publisher-specific metadata can be much larger than the
+// title/summary/link set; do not construct those unused subtrees in JS.
+// These elements are not consumed by the Guanlan news-index contract in RSS,
+// Atom or RDF. Leave required link/title/summary/date elements untouched.
+const UNUSED_XML_TAGS = new Set([
+  "content", "content:encoded", "author", "contributor", "category", "rights",
+  "guid", "id", "media:content", "media:group"
+]);
+const xmlParser = new XMLParser({
+  ignoreAttributes: false,
+  attributeNamePrefix: "@_",
+  processEntities: false,
+  trimValues: true,
+  updateTag: tagName => UNUSED_XML_TAGS.has(tagName) ? false : tagName
+});
 const value = (input: unknown): string => {
   if (typeof input === "string" || typeof input === "number") return String(input).trim();
   if (input && typeof input === "object") {

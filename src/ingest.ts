@@ -23,7 +23,7 @@ const safeFailure = (error:unknown): string => {
   return "fetch_or_parse_error"; // never persist arbitrary upstream URLs, tokens, or response content
 };
 
-async function fetchLimited(urlString:string, fetcher:(req:Request)=>Promise<Response>):Promise<string> {
+export async function fetchLimited(urlString:string, fetcher:(req:Request)=>Promise<Response>):Promise<string> {
   const u = new URL(urlString);
   if (u.protocol !== "https:" || u.username || u.password ||
       u.hostname === "localhost" || u.hostname.endsWith(".local")) throw new Error("invalid_source");
@@ -78,19 +78,31 @@ async function persistSuccess(env:PocEnv, source:Source, now:number, news:Return
   const stamp=iso(now);
   // One D1 batch is a transaction. Every insert requires current lease
   // ownership; even a delayed former holder cannot publish its old result.
-  const statements = news.map(item=>env.DB.prepare(`
-    INSERT OR IGNORE INTO poc_news (url,source_id,title,summary,published_at,ingested_at)
-    SELECT ?,?,?,?,?,?
-    WHERE EXISTS (
-      SELECT 1 FROM poc_sources WHERE id=? AND lease_token=? AND lease_expires_at > ?
-    )
-  `).bind(item.url,source.id,item.title,item.summary,item.publishedAt,stamp,source.id,source.lease_token,stamp));
-  statements.push(env.DB.prepare(`
-    UPDATE poc_sources SET
-      due_at=?,last_status='succeeded',last_error=NULL,last_checked_at=?,
-      retry_count=0,lease_token=NULL,lease_expires_at=NULL
-    WHERE id=? AND lease_token=? AND lease_expires_at > ?
-  `).bind(nextSuccessAt(now,source.interval_hours),stamp,source.id,source.lease_token,stamp));
+  // JSON1 expands a bounded candidate list inside SQLite: two D1 statements
+  // regardless of the number of entries, instead of preparing one INSERT per
+  // article. Keep the lease predicate INSIDE the INSERT for stale-owner fencing.
+  const batchItems = JSON.stringify(news.map(item => [item.url,item.title,item.summary,item.publishedAt]));
+  const statements = [
+    env.DB.prepare(`
+      INSERT OR IGNORE INTO poc_news (url,source_id,title,summary,published_at,ingested_at)
+      SELECT
+        json_extract(entry.value, '$[0]'), ?,
+        json_extract(entry.value, '$[1]'),
+        json_extract(entry.value, '$[2]'),
+        json_extract(entry.value, '$[3]'), ?
+      FROM json_each(?) AS entry
+      WHERE EXISTS (
+        SELECT 1 FROM poc_sources
+        WHERE id=? AND lease_token=? AND lease_expires_at > ?
+      )
+    `).bind(source.id,stamp,batchItems,source.id,source.lease_token,stamp),
+    env.DB.prepare(`
+      UPDATE poc_sources SET
+        due_at=?,last_status='succeeded',last_error=NULL,last_checked_at=?,
+        retry_count=0,lease_token=NULL,lease_expires_at=NULL
+      WHERE id=? AND lease_token=? AND lease_expires_at > ?
+    `).bind(nextSuccessAt(now,source.interval_hours),stamp,source.id,source.lease_token,stamp)
+  ];
   const result=await env.DB.batch(statements);
   const released=result[result.length-1]?.meta?.changes;
   if (released !== 1) return {inserted:0,lost:true};
