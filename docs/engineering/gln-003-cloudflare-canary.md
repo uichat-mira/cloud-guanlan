@@ -116,7 +116,7 @@ Cloudflare 官方实时依据：
 | 隔离 Worker / D1 创建 | **已完成**：专属资源、迁移和 D1 DB binding 校验；无其他资源修改 |
 | 真实 Cron / 外网 RSS / D1 租约 | **已验证**：HNRSS 超时退避、25 条真实 Atom 成功、2 条 RSS 成功、2 条重复抓取不新增、过期租约接管且旧 token 写入 0 行 |
 | 真实 CPU P50/P99、D1 rows | **已测得四次 scheduled CPU：8、32、10、10ms**，墙钟 9394、1600、1647、1721ms；D1 REST meta 和 Analytics SQL rowsRead/rowsWritten 可读取。但样本少，不能作为稳定 P99/账单容量预估 |
-| 免费运行容量与成本决策 | **暂不放行长期免费采集**：25 条 Atom CPU 32ms 超 Free 标称 Cron 单次 10ms，2 条 RSS 与重复处理均为 10ms，无安全裕量；需要小步优化和真实更多窗口再复验 |
+| 免费运行容量与成本决策 | **仍不放行长期免费采集**：首轮批量 JSON1 优化后，相同 25 条 Atom 首次入库实测 26ms（旧版 32ms，单样本差值 6ms），仍超过 Free 标称 10ms；需继续识别 CPU 热点、降低单次负载并增加样本 |
 
 **GLN-003 保持开放：真实云端功能链路已验证，但 Free CPU 裕量未满足生产化验收，仍需优化/复测。Cron 已停用，不会持续消耗测试额度。**
 
@@ -154,5 +154,20 @@ Cloudflare 官方实时依据：
 **免费额度技术结论（暂不生产放行）：** Cloudflare 官方 [Workers Free CPU time limits](https://developers.cloudflare.com/workers/platform/limits/#cpu-time) 标称 Cron 单次 10ms，当前四个成功/失败混合样本的 CPU 是 **8、32、10、10ms**，至少一次明显超限、两次踩线。单次 32ms 成功来自平台偶发超限容忍度，绝不能外推为可持续生产承诺。优先做局部 CPU profiling：区分解析、每条记录构造、批量 D1 `prepare`/事务响应；保留 GLN-002 的租约原子性和失败安全，控制条目上限、按真实样本定参数，不引入付费平台，不提前冻结每日可支持来源数量。**不能凭 4 次样本算可靠 P99。**
 
 观测来源：Cloudflare Analytics SQL API `logs.workersLogs` + 专属 D1 REST `meta` 与 `events.d1Queries`，查询窗口 2026-10-31 17:30–17:46 UTC。D1 SQL telemetry 可能采样且混合了人工查询，**不将整个查询窗口 rowsRead/rowsWritten 汇总作为纯 Cron 开销**。成功路径和幂等数据以实时 D1 记录核实。
+
+
+### 2026-10-31 18:05 UTC · 单次 CPU 优化实测（本轮）
+
+**目标与改动：**将原本对每一条新闻分别调用 `DB.prepare(...).bind(...)` 的 1:N SQL 写入，改为 **一次 `json_each(?)` / `json_extract(...)` 批量插入 + 一次拥有者状态更新**，仍以 `DB.batch()` 作为原子事务，并在批量插入的 SQL 内保留 `lease_token` / `lease_expires_at` 条件。保持来源间隔、失败退避、全局 URL 主键、最大候选数 40 和队列原子领取逻辑不变。
+
+- 代码：[PR #7](https://github.com/uichat-mira/cloud-guanlan/pull/7) 优化提交 `5ad91ec`，新增 40-item D1 测试提交 `1d24c47`。CI [Actions #41226821899](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41226821899) **T1 9/9，workerd+D1 T3 13/13，Canary 6/6，Wrangler dry-run、Mira Gate 和 SonarCloud 全绿**。原有超时/事务回滚/过期旧令牌不能写入用例均保留。
+- 实际部署：从上述优化后的 PR 分支创建仅用于 bundle 的 `feat/gln-003-perf-bundle-stage`，GitHub Actions [#41226905681](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41226905681) 编译实际 `src/index.ts`，bundle Git blob `cff903cf9b07493803ca3188eb3268eb36084f00`。临时 write-enabled workflow 在完成后删除，仅新建的 Guanlan Canary Worker 被更新。部署时检查 `Cron=[]`、唯一 D1 binding 指向专属库、Observability enabled。
+- 对照方法：只从 Canary D1 删除先前 **25 条由 `gln003-cf-status` 创建的测试新闻**，保留另一个小型来源的 2 条新闻，然后把同一 Cloudflare Status `history.atom` 来源调为到期；2026-10-31 17:57 UTC 为 Canary 开启短期 `*/5` Cron。无真实用户数据、无其他 Worker/D1 变更。
+- **本次真实 scheduled 执行（18:05:39 UTC）：CPU 26ms、wall 1,384ms**，成功解析与写入 **25 条 Atom 新闻、25 个不同 URL**；D1 来源状态 `succeeded`、`retry_count=0`、租约 token/expiry 清空，下次到期 `2026-10-31T19:05:38.694Z`。Canary 新闻共 27 条（25 Atom + 2 受控 RSS）。CPU 来源为 Cloudflare Analytics SQL `logs.workersLogs`。
+- **历史基线（17:35 UTC）：CPU 32ms / wall 1,600ms**，同一 Atom feed 首次入库 25 条。单次 CPU 低了 **6ms（18.75%）**，但这只是两次独立观测，可能包含边缘节点、冷启动、上游负载和运行噪声差异，**不能据此承诺稳定下降或容量提升**。
+- 独立的 Cloudflare D1 REST SQL 测试证明 `json_each/json_extract` 在实际 D1 支持。Cloudflare `events.d1Queries` 对该短窗口的细粒度 SQL 样本为空（采样/延迟），因此**没有可据以精确计算此轮纯 Cron rowsRead/rowsWritten 的细分证据**。
+- **复测后立即关闭 Cron 并重新 GET 确认 `schedules=[]`**。Cloudflare 官方说明停用传播最长可能 15 分钟；隔离 Worker 和 D1 保留但不授权长期定时运行。
+
+**判定：**本轮优化保留全部 D1 正确性并通过真实 Cloudflare 首次入库，产生一个方向积极、但统计证据不足的 CPU 观测。**26ms 仍高于 Workers Free 标称 Cron 10ms，GLN-003 不应标记完成，更不应批准生产化免费运行。**下一步若继续优化，应优先查清 `fast-xml-parser` 对大型 Atom 的 CPU 消耗和单次多个来源的累计开销；应基于新的有界观测决定处理粒度，而不是盲目削减所有来源到 2 条。
 
 Cloudflare 官方 [Cron 触发器传播说明](https://developers.cloudflare.com/workers/configuration/cron-triggers/) 与 [Analytics SQL API](https://developers.cloudflare.com/analytics/sql-api/) 是本次指标和观察窗口的依据。
