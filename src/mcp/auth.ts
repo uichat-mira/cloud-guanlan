@@ -39,8 +39,14 @@ const invalidToken = (): OAuthError =>
   new OAuthError(OAuthErrorCode.InvalidToken, "invalid_token");
 
 const tokenScopes = (payload: Record<string, unknown>): string[] => {
-  if (Array.isArray(payload.scopes)) {
-    return payload.scopes.filter((scope): scope is string => typeof scope === "string");
+  // Cloud Auth V0 signs scope as an array; standard OAuth access tokens may
+  // encode space-delimited scopes. Reject malformed arrays rather than
+  // silently discarding entries and accidentally broadening authority.
+  if (Array.isArray(payload.scope)) {
+    if (!payload.scope.every(value => typeof value === "string" && value.length > 0)) {
+      throw invalidToken();
+    }
+    return payload.scope;
   }
   if (typeof payload.scope === "string") {
     return payload.scope.split(/\s+/).filter(Boolean);
@@ -62,12 +68,8 @@ export function createCloudAuthVerifier(options: CloudAuthVerifierOptions): Guan
         const verified = await jwtVerify(token, keySet, {
           issuer: options.issuer,
           audience: options.audience,
-          algorithms: [
-            "RS256", "RS384", "RS512",
-            "ES256", "ES384", "ES512",
-            "EdDSA",
-            "PS256", "PS384", "PS512",
-          ],
+          // The current Cloud Auth public JWKS contains Ed25519 keys only.
+          algorithms: ["EdDSA"],
           clockTolerance: options.clockToleranceSeconds ?? 5,
           requiredClaims: ["iss", "aud", "exp", "sub"],
         });
@@ -119,13 +121,15 @@ export function createFixtureVerifier(
 }
 
 /** Adapter from the Guanlan principal to the SDK's auth pass-through shape. */
-export function authInfoFromPrincipal(token: string, principal: GuanlanPrincipal): AuthInfo {
+export function authInfoFromPrincipal(token: string, principal: GuanlanPrincipal, resourceUrl: URL): AuthInfo {
   return {
     token,
     clientId: principal.consumerId,
     scopes: principal.scopes,
     expiresAt: principal.expiresAt,
-    resource: new URL(principal.audience),
+    // JWT aud has already been verified against the configured Guanlan audience.
+    // MCP expectedResource is the actual /mcp URL, not the service-audience label.
+    resource: resourceUrl,
     extra: {
       accountId: principal.accountId,
       consumerId: principal.consumerId,
