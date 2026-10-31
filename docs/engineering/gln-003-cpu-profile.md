@@ -38,6 +38,16 @@ npm run check
 
 `test:profile` 通过 Miniflare/workerd + **真实 D1 binding** 验证：9 次 scheduled（每种 3 次）、健康路径和 404、前两段没有新闻写入、第三段确实使用生产调度和去重、10 次后完全停止抓取。
 
+## 2026-11-01 · 基于剖析结果的首轮 XML 剪枝
+
+在保留原始 `fast-xml-parser`、新闻候选 Schema、D1 租约与 JSON1 批量事务的前提下，`src/parser.ts` 通过解析器的 `updateTag` 针对**不参与观澜新闻索引**的元素（如 Atom `content`、`author`、`category`、RSS `content:encoded`）跳过无用节点的 JS 对象构建；`title`、`summary` / `description`、`link`、`published/updated/pubDate` 仍按既有规则提取，解析器没有替换为新的协议实现。
+
+**已验证的行为**：本地/CI 的 RSS、Atom、安全协议与 Atom alternate/self 链接既有测试保持通过；新增的“大段 HTML 全文元数据但只输出标题/摘要/链接/时间”用例通过。最新测试层面检查包括 T1 11/11、workerd + D1 T3 13/13、Canary 6/6、诊断入口 T3 1/1、双 Wrangler dry-run（[Actions #41231178082](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41231178082)）。这证明新代码没有破坏目前覆盖的内容契约，**不是**云端 CPU 性能的证明。
+
+**明确未证实**：本次剪枝尚未在 Cloudflare Canary 对同一 Atom 文档进行新的实测；`updateTag` 回调本身也有 CPU 开销，只有远程实际 `cpuTimeMs` 能判断净收益。GLN-003 最早的 4/14/19ms 中位数数据属于剪枝**之前**的代码，不能引用成新实现表现。
+
+**现阶段推进策略**：按维护者 2026-11-01 的部署判断，Workers 仍首选，阿里云保留可达性/运维/成本验证后的备选；不立即拆出第二 Worker 或实施双部署。CPU 研究已经足够定位高开销环节；接下来优先建设真实业务闭环，待稳定源规模或具体来源类型触发容量压力时，再以受限 Canary 复测并决定是否需要拆分任务、调整托管环境或降频。服务器落地不意味着天然解决大陆进出口网络问题。
+
 ## 真实运行结果
 
 ### 2026-10-31 18:25–18:33 UTC · 已完成 9 次真实 scheduled 调用
