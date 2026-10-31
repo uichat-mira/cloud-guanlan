@@ -62,4 +62,4 @@ const output={
     "A Free-tier suitability decision requires scheduled success/real RSS parsing and adequate sample windows, not HTTP health CPU alone."
   ]
 };
-console.log(JSON.stringify(output,null,2));
+// Emit exactly one JSON line: never interpolate upstream text into log formatting.\nprocess.stdout.write(JSON.stringify(output)+"\\n");
