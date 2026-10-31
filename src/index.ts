@@ -11,6 +11,6 @@ export default {
   async scheduled(event: ScheduledController, env: PocEnv, _ctx: ExecutionContext) {
     const outcome = await collectDue(env,event.scheduledTime);
     console.log(JSON.stringify({event:"poc_collect", ...outcome}));
-    if (outcome.errors > 0) console.error("GLN-001 source refresh failed; inspect D1 poc_sources.last_error");
+    if (outcome.errors > 0) console.error("Guanlan scheduled collection: one or more sources failed (details in D1).");
   },
 };
