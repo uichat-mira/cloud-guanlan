@@ -1,4 +1,3 @@
--- Add lease fencing and bounded retry data without changing GLN-001 PoC news schema.
 ALTER TABLE poc_sources ADD COLUMN lease_token TEXT;
 ALTER TABLE poc_sources ADD COLUMN lease_expires_at TEXT;
 ALTER TABLE poc_sources ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0;
