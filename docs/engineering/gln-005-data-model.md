@@ -14,6 +14,8 @@ Issue: [#11](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11). 本文
 
 在原有 Wrangler migration 路径中顺序应用 `0001_poc.sql`、`0002_source_leases.sql`、`0003_guanlan_accounts.sql`。第三份仅**新增六张表与索引**，不改写/重建 `poc_sources`、`poc_news`，不触碰源 URL PK、租约、Cron 或 MCP。不能对已经完成过的数据库再次手动运行 `0003` 以冒充迁移系统幂等：应使用 Wrangler 自有迁移追踪。
 
+消费状态账本由后续的 `0004_consumer_news_state.sql`（[GLN-007](gln-007-consumption-ledger.md)）以同样方式增量加入，只新增一张表与索引，不回填、不改写本文件所述任何表。
+
 新表使用 `ON DELETE CASCADE` 清理账户/消费者派生关系，源引用使用 `ON DELETE RESTRICT` 防止正在被订阅的共享源被删除。正式用户删除/历史数据保留和业务审计语义仍需独立合同。
 
 ## 验证与后续边界

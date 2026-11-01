@@ -3,11 +3,12 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { Miniflare } from "miniflare";
 
-// GLN-005: exercise actual workerd/D1, never an in-memory Node SQLite mock.
+// GLN-005 / GLN-007: exercise actual workerd/D1, never an in-memory Node SQLite mock.
 const MIGRATIONS = [
   "migrations/0001_poc.sql",
   "migrations/0002_source_leases.sql",
   "migrations/0003_guanlan_accounts.sql",
+  "migrations/0004_consumer_news_state.sql",
 ];
 const stamp = "2026-11-01T00:00:00.000Z";
 
@@ -198,5 +199,63 @@ test("upgrading populated 0001/0002 D1 preserves news, source lease and Cron rea
     const oldRow = (await values(db,
       "SELECT source_id, title FROM poc_news WHERE url=?", "https://example.com/news/1"))[0];
     assert.deepEqual(oldRow,{source_id:"legacy",title:"Legacy story"});
+  });
+});
+
+test("GLN-007 upgrade: populated 0001..0003 gains the ledger without rewriting existing rows", async () => {
+  await withD1(async db => {
+    // Forward upgrade from the exact schema a deployed GLN-005/GLN-006 database
+    // has, including live sources, news, accounts, consumers, subscriptions and
+    // interests. Nothing is dropped or recreated.
+    await apply(db, MIGRATIONS.slice(0, 3));
+    await seedSources(db);
+    await insert(db,
+      "INSERT INTO poc_news(url,source_id,title,summary,published_at,ingested_at) VALUES(?,?,?,?,?,?)",
+      "https://example.com/news/legacy","shared","Legacy story","Summary",stamp,stamp);
+    await seedOwners(db);
+    await accountSub(db,"account-a","shared");
+    await consumerSub(db,"account-a","research","consumer-only");
+    await accountInterest(db,"account-a","keyword","Science");
+    await consumerInterest(db,"account-a","research","topic","Space");
+
+    const tables = [
+      "poc_sources","poc_news","guanlan_accounts","guanlan_consumers",
+      "guanlan_account_subscriptions","guanlan_consumer_subscriptions",
+      "guanlan_account_interests","guanlan_consumer_interests",
+    ];
+    const snapshot = async () => {
+      const out = {};
+      for (const table of tables) {
+        out[table] = await values(db, `SELECT * FROM ${table} ORDER BY 1,2`);
+      }
+      return out;
+    };
+    const before = await snapshot();
+
+    await apply(db, MIGRATIONS.slice(3));
+
+    assert.deepEqual(await snapshot(), before);
+    // `unread` is the absence of a record: the migration backfills nothing.
+    assert.deepEqual(await values(db,
+      "SELECT COUNT(*) AS n FROM guanlan_consumer_news_states"),[{n:0}]);
+    assert.deepEqual(await values(db,"PRAGMA foreign_key_check"),[]);
+
+    // The new composite FK is tenant-bound on the upgraded database.
+    const insertState = (account, consumer, fingerprint) => insert(db, `
+      INSERT INTO guanlan_consumer_news_states (
+        account_id, consumer_id, news_fingerprint, source_id,
+        status, reason, outcome_url, decided_at, version, last_operation_id
+      ) VALUES (?,?,?,?,?,?,?,?,?,?)
+    `, account, consumer, fingerprint, "shared", "pending", null, null, stamp, 1, "op-upgrade");
+    await insertState("account-a","research","a".repeat(64));
+    // `research` exists only under account-a.
+    await reject(db, `
+      INSERT INTO guanlan_consumer_news_states (
+        account_id, consumer_id, news_fingerprint, source_id,
+        status, reason, outcome_url, decided_at, version, last_operation_id
+      ) VALUES (?,?,?,?,?,?,?,?,?,?)
+    `, "account-b", "research", "b".repeat(64), "shared", "pending", null, null, stamp, 1, "op-upgrade");
+    assert.equal((await values(db,
+      "SELECT COUNT(*) AS n FROM guanlan_consumer_news_states"))[0].n,1);
   });
 });
