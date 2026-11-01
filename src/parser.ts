@@ -34,18 +34,30 @@ const asDate = (raw: unknown): string | null => {
   const d = v ? Date.parse(v) : NaN;
   return Number.isFinite(d) ? new Date(d).toISOString() : null;
 };
-function normalizeUrl(raw: unknown, base: string): string | null {
+/**
+ * The single canonical-news-URL rule, shared by collection (`poc_news.url`) and
+ * the consumer decision ledger (GLN-007). Any identity derived from an article
+ * URL must use this function, otherwise the same article could be counted twice.
+ *
+ * `base` is the feed URL during collection; omitting it requires an absolute
+ * URL, which is what a caller naming an already-stored article must provide.
+ * The fragment is dropped, the query string is preserved (dropping arbitrary
+ * parameters would merge distinct articles) and credentials are refused.
+ */
+export function canonicalNewsUrl(raw: unknown, base?: string): string | null {
   try {
     const candidate = value(raw);
     // new URL("", base) resolves to the *feed URL*, which is not a news article.
     if (!candidate) return null;
-    const url = new URL(candidate, base);
+    const url = base === undefined ? new URL(candidate) : new URL(candidate, base);
     if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return null;
     url.hash = "";
     // Preserve query string: removing arbitrary parameters can merge distinct articles.
     return url.toString();
   } catch { return null; }
 }
+
+const normalizeUrl = (raw: unknown, base: string): string | null => canonicalNewsUrl(raw, base);
 const result = (entries: Array<{title: unknown; summary: unknown; url: unknown; date: unknown}>, base: string): NewsCandidate[] => {
   const unique = new Set<string>();
   return entries.slice(0, MAX_ITEMS).flatMap(item => {
