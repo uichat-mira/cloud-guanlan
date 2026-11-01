@@ -559,6 +559,15 @@ export function createAuthorizedNewsReader(dependencies: NewsReaderDependencies)
         throw new NewsReadError("principal_unavailable", "the verified subject has no provisioned Guanlan space");
       }
 
+      // Validate cursor identity/filter/integrity on every request, even if
+      // authorization currently yields no sources or rejects sourceId. A bad
+      // cursor must not silently turn into an apparently successful empty page.
+      const digest = await newsFilterDigest(subject, filters);
+      let after: CursorPosition | null = null;
+      if (filters.cursor !== null) {
+        after = await decodeNewsCursor(filters.cursor, subject, digest);
+      }
+
       const sourceIds = authorization.effective.sourceIds;
       // Zero effective sources is a positive answer, never "read every source".
       if (sourceIds.length === 0) return emptyPage(filters.limit);
@@ -566,12 +575,6 @@ export function createAuthorizedNewsReader(dependencies: NewsReaderDependencies)
       // cannot probe whether another source exists in the global index.
       if (filters.sourceId !== null && !sourceIds.includes(filters.sourceId)) {
         return emptyPage(filters.limit);
-      }
-
-      const digest = await newsFilterDigest(subject, filters);
-      let after: CursorPosition | null = null;
-      if (filters.cursor !== null) {
-        after = await decodeNewsCursor(filters.cursor, subject, digest);
       }
 
       const items: NewsItem[] = [];

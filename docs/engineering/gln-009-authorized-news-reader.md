@@ -21,7 +21,7 @@ Issue: [#16](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/16). 本文
 - `sourceIds` 为空 = 零可见来源，返回合法空页（`items: []`, `nextCursor: null`），绝不回退全局 `poc_news`。
 - 显式 `sourceId` 不在有效集合内时同样返回空页，不报错、不区分「不存在」与「无权」，避免探测全局新闻/他人来源。
 - 主体未 provisioning（`account_not_found` / `consumer_not_found`）与存储故障是**显式工具错误**，不是空页。
-- 游标不是授权凭证：任何翻页请求都重新做上述授权查询；游标只携带位置。
+- 游标不是授权凭证：任何翻页请求都重新做上述授权查询；游标只携带位置。即使当前订阅为空或指定了未授权 `sourceId`，提供的游标仍须先通过身份、筛选集合和完整性校验；畸形游标不可被提前返回的空页吞掉。
 
 ## 查询合同
 

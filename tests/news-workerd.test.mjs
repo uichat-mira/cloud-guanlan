@@ -386,6 +386,17 @@ test("real D1: empty subscriptions are an empty page; an unprovisioned subject f
       assert.equal(probe.isError, undefined);
       assert.equal(probe.structuredContent.count, 0);
 
+      // Cursor errors are not downgraded to empty success by early exits.
+      for (const args of [
+        { cursor: "not-a-cursor" },
+        { sourceId: "feed-b", cursor: "not-a-cursor" },
+      ]) {
+        const badCursor = await callNews(empty.client, args);
+        assert.equal(badCursor.isError, true);
+        assert.match(badCursor.content[0].text, /guanlan_news_cursor_invalid/);
+        assert.equal(badCursor.structuredContent, undefined);
+      }
+
       const broken = await callNews(missing.client, { limit: 20 });
       assert.equal(broken.isError, true);
       assert.match(broken.content[0].text, /guanlan_principal_unavailable/);

@@ -235,6 +235,21 @@ test("a source id outside the effective set is answered with an empty page, not 
   assert.equal(db.statements.length, 0);
 });
 
+test("bad cursors remain explicit errors on empty-authorized and denied-source reads", async () => {
+  const db = fakeDb([]);
+  await assert.rejects(
+    reader(db, { sourceIds: [] }).listPage(principal(), { cursor: "not-a-cursor" }),
+    error => error instanceof NewsReadError && error.code === "invalid_cursor",
+  );
+  await assert.rejects(
+    reader(db, { sourceIds: ["feed-1"] }).listPage(principal(), {
+      sourceId: "feed-secret", cursor: "not-a-cursor",
+    }),
+    error => error instanceof NewsReadError && error.code === "invalid_cursor",
+  );
+  assert.equal(db.statements.length, 0, "cursor validation must not read the news index");
+});
+
 test("unprovisioned and broken subscriptions fail explicitly, never as an empty page", async () => {
   for (const [failure, code] of [
     ["account_not_found", "principal_unavailable"],
