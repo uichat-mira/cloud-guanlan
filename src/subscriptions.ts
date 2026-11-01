@@ -17,9 +17,11 @@ import type { GuanlanPrincipal } from "./mcp/auth";
  */
 
 /**
- * At least as strict as the `0003` CHECK constraints: JS `trim()` strips more
- * whitespace and `.length` counts UTF-16 units, so a value the database would
- * accept but these bounds reject fails closed instead of being admitted.
+ * Account/consumer identifier bound. At least as strict as the `0003` CHECK
+ * constraints: JS `trim()` strips more whitespace and `.length` counts UTF-16
+ * units, so a value the database would accept but these bounds reject fails
+ * closed instead of being admitted. Source ids have no such bound — see
+ * `isStoredSourceId`.
  */
 export const SUBJECT_ID_MAX = 128;
 /** Mirrors the `0003` CHECK constraints on subscription `interval_hours`. */
@@ -140,6 +142,16 @@ const isIntervalHours = (value: unknown): value is number => {
   return value >= INTERVAL_HOURS_MIN && value <= INTERVAL_HOURS_MAX;
 };
 
+/**
+ * `poc_sources.id` is `TEXT PRIMARY KEY` in `0001` with no length or trim CHECK,
+ * and `0003` only references it through a foreign key. The port therefore
+ * mirrors that storage contract instead of inventing a bound: any non-empty
+ * stored id is a valid source id, and a long id must not turn a readable
+ * account into `storage_failure`. Account/consumer ids keep their own bound.
+ */
+const isStoredSourceId = (value: unknown): value is string =>
+  typeof value === "string" && value.length >= 1;
+
 const isInterestKind = (value: unknown): value is InterestKind =>
   value === "keyword" || value === "topic";
 
@@ -170,7 +182,8 @@ const compare = (left: string, right: string): number =>
  * Deduplication and precedence are part of the contract and are fixed by tests:
  * - sources: one entry per `sourceId`; a source referenced by both levels keeps
  *   the consumer's `intervalHours` (more specific preference) while `origin`
- *   records that the account baseline also covers it;
+ *   records that the account baseline also covers it; source ids are taken
+ *   verbatim from storage, which has no length/trim constraint on them;
  * - interests: one entry per `kind` + ASCII-folded `value`; the account's stored
  *   spelling is kept, because it is the baseline every consumer inherits;
  * - order: sources by `sourceId`, interests by `kind` then folded `value`.
@@ -183,7 +196,7 @@ export function buildEffectiveConfiguration(
 ): EffectiveSubscription {
   const bySource = new Map<string, { account?: number; consumer?: number }>();
   for (const row of sources) {
-    if (!isBoundedId(row.sourceId) || !isIntervalHours(row.intervalHours) || !isLevel(row.level)) {
+    if (!isStoredSourceId(row.sourceId) || !isIntervalHours(row.intervalHours) || !isLevel(row.level)) {
       throw new SubscriptionReadError(
         "storage_failure",
         "a subscription row is outside the stored contract",

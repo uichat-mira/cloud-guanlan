@@ -320,3 +320,38 @@ test("real D1: a missing domain table is an explicit storage failure, not empty 
     );
   });
 });
+
+test("real D1: a source id longer than the account-id bound is still readable", async () => {
+  await withD1(async db => {
+    // `poc_sources.id` has no length CHECK, so these are legitimate stored ids.
+    const longId = "s".repeat(129);
+    const veryLongId = "t".repeat(300);
+    await insert(db, "INSERT INTO poc_sources(id,url,interval_hours,due_at) VALUES(?,?,?,?)",
+      longId, "https://example.com/long.xml", 1, stamp);
+    await insert(db, "INSERT INTO poc_sources(id,url,interval_hours,due_at) VALUES(?,?,?,?)",
+      veryLongId, "https://example.com/very-long.xml", 1, stamp);
+    await insert(db, "INSERT INTO guanlan_accounts(account_id,created_at) VALUES(?,?)",
+      "account-long", stamp);
+    await insert(db, "INSERT INTO guanlan_consumers(account_id,consumer_id,created_at) VALUES(?,?,?)",
+      "account-long", "reader", stamp);
+    await insert(db,
+      "INSERT INTO guanlan_account_subscriptions(account_id,source_id,interval_hours,created_at) VALUES(?,?,?,?)",
+      "account-long", longId, 2, stamp);
+    await insert(db,
+      "INSERT INTO guanlan_consumer_subscriptions(account_id,consumer_id,source_id,interval_hours,created_at) VALUES(?,?,?,?,?)",
+      "account-long", "reader", longId, 8, stamp);
+    await insert(db,
+      "INSERT INTO guanlan_consumer_subscriptions(account_id,consumer_id,source_id,interval_hours,created_at) VALUES(?,?,?,?,?)",
+      "account-long", "reader", veryLongId, 1, stamp);
+
+    const read = await readOf(db, "account-long", "reader");
+    // Returned verbatim and complete: no truncation, no storage_failure.
+    assert.deepEqual(read.sourceIds, [longId, veryLongId]);
+    assert.equal(read.sourceIds[0].length, 129);
+    assert.equal(read.sourceIds[1].length, 300);
+    assert.deepEqual(read.sources.map(s => [s.sourceId.length, s.intervalHours, s.intervalSource]), [
+      [129, 8, "consumer"],
+      [300, 1, "consumer"],
+    ]);
+  });
+});

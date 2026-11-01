@@ -7,6 +7,7 @@ Issue: [#13](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/13). 本文
 - 唯一实现入口：`src/subscriptions.ts`。调用方必须先用 `subjectFromPrincipal(principal)` 把**服务端已验证凭证派生**的主体（完整 `GuanlanPrincipal`，即 `principalFromAuthInfo(...)` 的返回值）转成 `GuanlanSubject`。
 - `GuanlanSubject` 带编译期 brand：普通 DTO、工具参数或 URL 值不能在不经过 `subjectFromPrincipal` 的情况下被当作已验证主体使用。**类型无法证明来源**——手工拼出同形状对象同样能编译；真正的信任边界在凭证验证器，不在本模块。brand 运行时会被擦除，因此 `read()` 会重新校验标识形状，非法标识返回 `invalid_subject` 且不访问数据库。
 - 主体格式校验至少与 `0003` 的 CHECK 同样严格（JS `trim()`/`.length` 比 SQLite 略严），不一致时 fail-closed；不存在「用空白/超长 ID 探测数据库」的路径。
+- **来源 ID 不套用主体上限**：`poc_sources.id` 在 `0001` 中是无长度/trim CHECK 的 `TEXT PRIMARY KEY`，`0003` 只以外键引用它。因此端口按存储合同原样接受并返回来源 ID——129 字符或更长的合法 ID 必须能读出，不能把整个配置变成 `storage_failure`。账户/消费者 ID 仍保留 128 字符与 trim 校验。
 
 ## 有效集合规则（契约测试固定）
 
@@ -57,6 +58,6 @@ const placeholders = read.effective.sourceIds.map(() => "?").join(",");
 
 ## 验证证据
 
-- `tests/subscriptions.test.mjs`（T1/T2）：合并/去重/排序、**双向**偏好优先级（消费者值高于或低于账户值都取消费者，排除 min/max）、标识与行级契约校验、畸形存在性负载、失败语义、只发 `SELECT`。
-- `tests/subscriptions-workerd.test.mjs`（T3，真实 Miniflare/workerd + D1）：两账户共享同一 source 的各自继承、同账户两消费者的独有增量、消费者偏好双向生效（账户 2h/消费者 8h → 8h）、跨账户与错配主体拒绝、空订阅零可见来源（并证明删除 `poc_news` 后仍不依赖它）、删除域表时 `storage_failure` 而非空成功、读取无副作用、删除消费者专属订阅不影响共享基线与兄弟消费者。
+- `tests/subscriptions.test.mjs`（T1/T2）：合并/去重/排序、**双向**偏好优先级（消费者值高于或低于账户值都取消费者，排除 min/max）、标识与行级契约校验、**超过 128 字符与带空白的来源 ID 原样返回**、畸形存在性负载、失败语义、只发 `SELECT`。
+- `tests/subscriptions-workerd.test.mjs`（T3，真实 Miniflare/workerd + D1）：两账户共享同一 source 的各自继承、同账户两消费者的独有增量、消费者偏好双向生效（账户 2h/消费者 8h → 8h）、跨账户与错配主体拒绝、空订阅零可见来源（并证明删除 `poc_news` 后仍不依赖它）、删除域表时 `storage_failure` 而非空成功、**129/300 字符来源 ID 在真实 D1 中正常读出**、读取无副作用、删除消费者专属订阅不影响共享基线与兄弟消费者。
 - 两者均进入 `npm run test:unit` / `npm run test:integration`，因此 `npm run check` 与 `bash scripts/check.sh` 都会执行。

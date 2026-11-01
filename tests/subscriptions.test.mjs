@@ -151,7 +151,6 @@ test("a row outside the stored contract fails explicitly instead of being coerce
     [[source("shared", 0, "account")], []],
     [[source("shared", INTERVAL_HOURS_MAX + 1, "account")], []],
     [[source("shared", 1.5, "account")], []],
-    [[source(" shared", 1, "account")], []],
     [[source("", 1, "account")], []],
     [[source("shared", 1, "account")], [interest("tag", "Science", "account")]],
     [[source("shared", 1, "account")], [interest("keyword", "", "account")]],
@@ -164,6 +163,37 @@ test("a row outside the stored contract fails explicitly instead of being coerce
       error => error instanceof SubscriptionReadError && error.code === "storage_failure",
     );
   }
+});
+
+test("source ids follow the real poc_sources.id contract, not the account-id bound", () => {
+  // `0001` declares `poc_sources.id TEXT PRIMARY KEY` with no length or trim
+  // CHECK, so a 129-character or space-edged stored id is legitimate data. The
+  // port must return it verbatim instead of failing the whole configuration.
+  const longId = "s".repeat(129);
+  const veryLongId = "https://example.com/feed/" + "x".repeat(300);
+  const spacedId = " source with spaces ";
+  const effective = buildEffectiveConfiguration("account-a", "research", [
+    source(longId, 2, "account"),
+    source(longId, 8, "consumer"),
+    source(veryLongId, 1, "consumer"),
+    source(spacedId, 3, "account"),
+  ], []);
+
+  assert.deepEqual(effective.sourceIds, [spacedId, veryLongId, longId]);
+  assert.equal(effective.sources[0].sourceId, spacedId);
+  assert.equal(effective.sources[2].sourceId, longId);
+  assert.equal(effective.sources[2].sourceId.length, 129);
+  // No truncation and no rewriting of the stored identifier.
+  assert.equal(effective.sources[1].sourceId.length, veryLongId.length);
+  // Precedence still applies to a long id.
+  assert.deepEqual(effective.sources[2], {
+    sourceId: longId, origin: "both", intervalHours: 8, intervalSource: "consumer",
+  });
+  // The account/consumer identifier bound is unchanged.
+  assert.throws(
+    () => subjectFromPrincipal({ ...principal(), accountId: "a".repeat(SUBJECT_ID_MAX + 1) }),
+    error => error instanceof SubscriptionReadError && error.code === "invalid_subject",
+  );
 });
 
 test("missing account and missing consumer are explicit denials, not empty success", async () => {
