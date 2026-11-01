@@ -1,4 +1,4 @@
-# Cloud Guanlan · 云端观澜
+# Cloud MCP Guanlan · 云端观澜
 
 **Mira Cloud 的基础新闻采集与聚合服务。**
 
@@ -6,7 +6,7 @@
 
 观澜负责“采集和记账”，不负责“理解与决策”。外部 Agent 自行选择是否 Web Fetch 原文、是否采用新闻，并明确回写处理结果。
 
-> **当前阶段：GLN-001/002 基础采集 POC 已完成；GLN-003 在专属 Cloudflare Canary 实测了 Cron、采集、D1 与 CPU；GLN-004 已实现受 Cloud Auth 保护的远程 MCP 协议入口代码。尚未部署多用户业务服务，未完成真实 Cloud Auth 联调或 Free CPU 稳定性验收。**
+> **当前能力：** 已有公共 Feed 采集与 D1 租约/去重 POC、受保护的只读 MCP 服务端，以及 GLN-005 的多用户数据模型。GLN-003 的隔离 Cloudflare 实测已完成研究验收，但 Workers Free 持续 Cron CPU 裕量仍未获放行；真实 Cloud Auth 账号联调、私有订阅查询/消费账本、Desktop/Mobile 接入和生产上线尚未完成。
 > 请勿将本 README 中的目标能力理解为已经上线的 API 或 Cloudflare 服务。
 
 ## 设计入口
@@ -47,7 +47,7 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-当前 [GLN-003](https://github.com/uichat-mira/cloud-guanlan/issues/6) 正在完成 Workers + D1 的隔离实测及性能优化。专属测试环境真实执行过 Cron、Atom/RSS 采集和 D1 写入，**但它不是公开新闻 API，没有 Cloud Auth 或生产数据库接入，也未通过 Free 长期容量验收**。[GLN-004](https://github.com/uichat-mira/cloud-guanlan/issues/8) 的远程 MCP 入口仍是待审阅代码，未部署、未接入真实 Cloud Auth。
+[GLN-003](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6) 是已完成的隔离运行研究，结论仍是不批准依赖 Free 10ms CPU 的长期 Cron；相关 Canary 保留且调度关闭。[GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 的远程 MCP 协议代码已并入 `dev`，但不代表真实 Cloud Auth 令牌或客户端已经接通。[GLN-005](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11) 的多用户持久化模型也已进入 `dev`。
 
 - [仓库工程约束](AGENTS.md)
 - [Issue 任务卡与付费 OpenCode Worker 使用说明](docs/engineering/work-items.md)

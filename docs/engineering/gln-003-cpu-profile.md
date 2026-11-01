@@ -1,6 +1,6 @@
 # GLN-003 · Cloudflare CPU 三段隔离剖析
 
-> 任务契约：[GLN-003 Issue #6](https://github.com/uichat-mira/cloud-guanlan/issues/6)。此文是诊断方法与证据，不改变 GLN-003 的产品验收标准。
+> 任务契约：[GLN-003 Issue #6](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6)。此文是诊断方法与证据，不改变 GLN-003 的产品验收标准。
 
 ## 假设与工具
 
@@ -42,7 +42,7 @@ npm run check
 
 在保留原始 `fast-xml-parser`、新闻候选 Schema、D1 租约与 JSON1 批量事务的前提下，`src/parser.ts` 通过解析器的 `updateTag` 针对**不参与观澜新闻索引**的元素（如 Atom `content`、`author`、`category`、RSS `content:encoded`）跳过无用节点的 JS 对象构建；`title`、`summary` / `description`、`link`、`published/updated/pubDate` 仍按既有规则提取，解析器没有替换为新的协议实现。
 
-**已验证的行为**：本地/CI 的 RSS、Atom、安全协议与 Atom alternate/self 链接既有测试保持通过；新增的“大段 HTML 全文元数据但只输出标题/摘要/链接/时间”用例通过。最新测试层面检查包括 T1 11/11、workerd + D1 T3 13/13、Canary 6/6、诊断入口 T3 1/1、双 Wrangler dry-run（[Actions #41231178082](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41231178082)）。这证明新代码没有破坏目前覆盖的内容契约，**不是**云端 CPU 性能的证明。
+**已验证的行为**：本地/CI 的 RSS、Atom、安全协议与 Atom alternate/self 链接既有测试保持通过；新增的“大段 HTML 全文元数据但只输出标题/摘要/链接/时间”用例通过。最新测试层面检查包括 T1 11/11、workerd + D1 T3 13/13、Canary 6/6、诊断入口 T3 1/1、双 Wrangler dry-run（[Actions #41231178082](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41231178082)）。这证明新代码没有破坏目前覆盖的内容契约，**不是**云端 CPU 性能的证明。
 
 **明确未证实**：本次剪枝尚未在 Cloudflare Canary 对同一 Atom 文档进行新的实测；`updateTag` 回调本身也有 CPU 开销，只有远程实际 `cpuTimeMs` 能判断净收益。GLN-003 最早的 4/14/19ms 中位数数据属于剪枝**之前**的代码，不能引用成新实现表现。
 
@@ -52,8 +52,8 @@ npm run check
 
 ### 2026-10-31 18:25–18:33 UTC · 已完成 9 次真实 scheduled 调用
 
-- **源码分支**：`feat/gln-003-cloudflare-canary`，Profile 入口提交 `7f58ec3`、完整 T3 测试提交 `fbdbc14`；[CI run #41228319868](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41228319868) **T1 9/9、runtime D1 T3 13/13、Canary 6/6、Profile runtime test 1/1、Mira Gate 成功**。后续文档提交的 CI 另行检查。
-- **构建/部署身份证据**：临时隔离分支 `feat/gln-003-profile-bundle-stage`，GitHub Actions [#41228436418](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41228436418) 编译出完整、重用生产 `fetchLimited`/`parseWithFastXml`/`collectDue` 的专用 scheduled 入口，**Git blob `7d503624428443539826eb9ab252a34bf93953a2`**（210,236 字符）。构建用的临时可写 workflow 已删除。
+- **源码分支**：`feat/gln-003-cloudflare-canary`，Profile 入口提交 `7f58ec3`、完整 T3 测试提交 `fbdbc14`；[CI run #41228319868](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41228319868) **T1 9/9、runtime D1 T3 13/13、Canary 6/6、Profile runtime test 1/1、Mira Gate 成功**。后续文档提交的 CI 另行检查。
+- **构建/部署身份证据**：临时隔离分支 `feat/gln-003-profile-bundle-stage`，GitHub Actions [#41228436418](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41228436418) 编译出完整、重用生产 `fetchLimited`/`parseWithFastXml`/`collectDue` 的专用 scheduled 入口，**Git blob `7d503624428443539826eb9ab252a34bf93953a2`**（210,236 字符）。构建用的临时可写 workflow 已删除。
 - **受控环境**：仅覆盖同名 `cloud-guanlan-gln003-canary` Worker；D1 唯一绑定未更改。创建专属 `gln003_profile_plan` 和 `gln003_profile_samples` 表（不属于正式迁移）；在运行前清除该测试源此前的 25 条记录，其他来源只临时顺延到期时间且已恢复。Cron 设置为 `* * * * *`，Cloudflare 首次真正投递约 9 分钟后开始，于 18:25–18:33 UTC 每分钟运行一次，**9/9 成功且无错误**。
 - 来源为同一公开 `https://www.cloudflarestatus.com/history.atom`，约 **32,218 UTF-16 字符、25 条 Atom 项目**；实际 CPU 数值取自 Cloudflare Analytics SQL `logs.workersLogs` 的 scheduled `cpuTimeMs`，并以 D1 `gln003_profile_samples.run/mode` 及分钟时间顺序核对。下列 `wall_ms` 是代码内部的阶段墙钟，不是 CPU。
 
