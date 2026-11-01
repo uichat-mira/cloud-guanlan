@@ -120,7 +120,11 @@ export function renderNewsMarkdown(page: NewsPage): string {
     `Page size: ${page.limit} · Returned: ${page.count} · Next cursor: ${page.nextCursor ?? "none"}`,
   ];
   if (page.items.length === 0) {
-    lines.push("", "No news items match this authorized query.");
+    lines.push("",
+      page.nextCursor
+        ? "No matching news in this scanned window. More authorized news may exist; continue with the next cursor."
+        : "No news items match this authorized query.",
+    );
     return lines.join("\n");
   }
   for (const item of page.items) {

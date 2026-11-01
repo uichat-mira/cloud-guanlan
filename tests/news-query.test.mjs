@@ -388,4 +388,8 @@ test("Markdown and JSON render the same page, including status, size and cursor"
   assert.match(markdown, /URL: https:\/\/example\.com\/a/);
   assert.match(markdown, /A summary/);
   assert.match(renderNewsMarkdown({ items: [], count: 0, limit: 20, nextCursor: null }), /No news items match this authorized query/);
+  const sparse = renderNewsMarkdown({ items: [], count: 0, limit: 20, nextCursor: "continue-here" });
+  assert.match(sparse, /More authorized news may exist/);
+  assert.match(sparse, /continue-here/);
+  assert.doesNotMatch(sparse, /No news items match this authorized query/);
 });
