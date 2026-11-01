@@ -193,8 +193,8 @@ const parseMutation = (input: unknown): ParsedMutation | null => {
 
   if (op === "remove") {
     return level === "account"
-      ? { level, op, sourceId: candidate.sourceId }
-      : { level, op, sourceId: candidate.sourceId };
+      ? { level: "account", op, sourceId: candidate.sourceId }
+      : { level: "consumer", op, sourceId: candidate.sourceId };
   }
 
   const intervalHours = candidate.intervalHours;
@@ -207,8 +207,8 @@ const parseMutation = (input: unknown): ParsedMutation | null => {
     return null;
   }
   return level === "account"
-    ? { level, op, sourceId: candidate.sourceId, intervalHours }
-    : { level, op, sourceId: candidate.sourceId, intervalHours };
+    ? { level: "account", op, sourceId: candidate.sourceId, intervalHours }
+    : { level: "consumer", op, sourceId: candidate.sourceId, intervalHours };
 };
 
 /**
