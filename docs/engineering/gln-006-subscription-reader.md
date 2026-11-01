@@ -53,7 +53,7 @@ const placeholders = read.effective.sourceIds.map(() => "?").join(",");
 ## 复用入口与边界
 
 - 管理 API（后续）与 MCP 工具必须复用同一个 `createD1SubscriptionReader` 与同一套失败语义，不另造平行授权路径。
-- 本卡**不**改动 `src/mcp/service.ts` 的全局读取：MCP 新闻分页与授权过滤属于 GLN-009，`guanlan_news_recent` 目前仍是全局读取（已知缺口，见 PR 风险）。
+- 本卡**不**改动 `src/mcp/service.ts` 的全局读取：MCP 新闻分页与授权过滤属于 GLN-009。该缺口已由 [GLN-009](gln-009-authorized-news-reader.md) 关闭：`guanlan_news_recent` 现在每次调用都通过本卡的 `sourceIds` 限制来源。
 - 不新增 D1 迁移、不开放公网接口、不实现 CRUD、不接真实 Cloud Auth 账号。
 
 ## 验证证据

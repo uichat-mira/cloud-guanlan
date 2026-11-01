@@ -29,16 +29,22 @@ const ENV = {
 };
 const DB = { prepare() { throw new Error("unexpected D1 access in auth tests"); } };
 const READER = {
-  async listRecent() {
-    return [{
-      id: "https://example.com/story",
-      title: "Example",
-      summary: "Summary",
-      url: "https://example.com/story",
-      sourceId: "feed-1",
-      publishedAt: "2026-10-31T00:00:00.000Z",
-      ingestedAt: "2026-10-31T00:01:00.000Z",
-    }];
+  async listPage() {
+    return {
+      items: [{
+        id: "https://example.com/story",
+        title: "Example",
+        summary: "Summary",
+        url: "https://example.com/story",
+        sourceId: "feed-1",
+        publishedAt: "2026-10-31T00:00:00.000Z",
+        ingestedAt: "2026-10-31T00:01:00.000Z",
+        status: "unread",
+      }],
+      count: 1,
+      limit: 20,
+      nextCursor: null,
+    };
   },
 };
 const fixtureVerifier = createFixtureVerifier(FIXTURE_TOKENS, {

@@ -21,6 +21,9 @@ export const FIXTURE_TOKENS: Record<string, GuanlanPrincipal> = {
   "fixture-consumer-1": base(),
   "fixture-consumer-2": { ...base(), consumerId: "consumer-2" },
   "fixture-account-b": { ...base(), accountId: "account-b", consumerId: "consumer-b" },
+  // Verified credentials whose Guanlan space is deliberately not provisioned.
+  "fixture-unprovisioned": { ...base(), accountId: "account-z", consumerId: "consumer-z" },
+  "fixture-empty-account": { ...base(), accountId: "account-empty", consumerId: "consumer-empty" },
   "fixture-wrong-issuer": { ...base(), issuer: "https://relay.example.com" },
   "fixture-shiyan-audience": { ...base(), audience: "https://api.shiyan.example.com" },
   "fixture-relay-audience": { ...base(), audience: "https://api.relay.example.com" },
