@@ -47,9 +47,10 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-[GLN-003](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6) 是已完成的隔离运行研究，结论仍是不批准依赖 Free 10ms CPU 的长期 Cron；相关 Canary 保留且调度关闭。[GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 的远程 MCP 协议代码已并入 `dev`，但不代表真实 Cloud Auth 令牌或客户端已经接通。[GLN-005](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11) 的多用户持久化模型也已进入 `dev`。
+[GLN-003](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6) 是已完成的隔离运行研究，结论仍是不批准依赖 Free 10ms CPU 的长期 Cron；相关 Canary 保留且调度关闭。[GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 的远程 MCP 协议代码已并入 `dev`，但不代表真实 Cloud Auth 令牌或客户端已经接通。[GLN-005](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11) 的多用户持久化模型也已进入 `dev`。[GLN-008](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/15) 的来源安全准入（批准白名单 + fail-closed URL 策略 + 受控登记）以 Draft PR 交付，未合并、未部署、未开启 Cron。
 
 - [仓库工程约束](AGENTS.md)
+- [GLN-008 来源安全准入与受控采集边界](docs/engineering/gln-008-source-safety.md)：接受/拒绝矩阵、Workers 能力限制与剩余安全边界。
 - [Issue 任务卡与付费 OpenCode Worker 使用说明](docs/engineering/work-items.md)
 - `bash scripts/check.sh`：有运行时代码后执行完整 `npm run check`（类型、解析、真实 workerd/D1 集成、Wrangler dry-run、同环境基准）。
 - [GLN-001 技术证据](docs/engineering/gln-001-poc.md)：运行结果、选型结论和剩余限制。
