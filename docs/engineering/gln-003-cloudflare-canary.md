@@ -1,6 +1,6 @@
 # GLN-003 · Cloudflare 隔离实测手册与证据状态
 
-> [任务契约 #6](https://github.com/uichat-mira/cloud-guanlan/issues/6)。
+> [任务契约 #6](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6)。
 > **当前状态（2026-11-01）：专属 Cloudflare Worker + D1 已真实部署、采集、测量并完成安全收尾；Canary Cron 已关闭，正式应用 bundle 已恢复。** 已取得定时采集、超时退避、过期租约、URL 幂等和 CPU 的运行证据；**尚未证明 Workers Free 10ms CPU 限额下可持续稳定运行**。见第 6 节与 [九次 CPU 三段剖析](gln-003-cpu-profile.md)，不能以通过 CI 代替云端验收。
 
 ## 1. 本轮已经核实的账号事实
@@ -113,7 +113,7 @@ Cloudflare 官方实时依据：
 
 | 项目 | 状态 |
 | --- | --- |
-| GitHub CI / canary dry-run | **通过**：[PR #7 run 41225808350](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41225808350)，T1 9/9、workerd+D1 T3 12/12、Canary 6/6，双 Wrangler dry-run、Mira Gate、SonarCloud 均成功；CodeRabbit skipped 不等于批准 |
+| GitHub CI / canary dry-run | **通过**：[PR #7 run 41225808350](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41225808350)，T1 9/9、workerd+D1 T3 12/12、Canary 6/6，双 Wrangler dry-run、Mira Gate、SonarCloud 均成功；CodeRabbit skipped 不等于批准 |
 | Cloudflare 账号确认为 Free | **维护者从控制台确认无 Workers Paid 订阅**；OAuth Billing Read 仍为 403 |
 | 隔离 Worker / D1 创建 | **已完成**：专属资源、迁移和 D1 DB binding 校验；无其他资源修改 |
 | 真实 Cron / 外网 RSS / D1 租约 | **已验证**：HNRSS 超时退避、25 条真实 Atom 成功、2 条 RSS 成功、2 条重复抓取不新增、过期租约接管且旧 token 写入 0 行 |
@@ -125,9 +125,9 @@ Cloudflare 官方实时依据：
 ## 6. 真实 Cloudflare 隔离环境执行记录（2026-10-31 UTC）
 
 - 17:18 UTC：使用已连接 Cloudflare 账号创建专属 D1 `cloud-guanlan-gln003-canary`；REST API 成功执行 `0001_poc.sql` / `0002_source_leases.sql` 八条建表、索引和 ALTER 操作，校验十个列名称。D1 库 UUID 和账号 ID **不进入仓库文本**。
-- GitHub 隔离构建 [Actions #41224035516](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41224035516) 基于 GLN-003 PR 源码（未更改其真实 `src/index.ts` / `src/ingest.ts` / `src/parser.ts`）编译 ES Module bundle；上传的 bundle Git blob 是 `0bdca1006db3d628ad933de6a1c1b615e0425a11`。临时构建仅在分离的 `feat/gln-003-bundle-staging` 分支发生，不属于待合入的 PR。
+- GitHub 隔离构建 [Actions #41224035516](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41224035516) 基于 GLN-003 PR 源码（未更改其真实 `src/index.ts` / `src/ingest.ts` / `src/parser.ts`）编译 ES Module bundle；上传的 bundle Git blob 是 `0bdca1006db3d628ad933de6a1c1b615e0425a11`。临时构建仅在分离的 `feat/gln-003-bundle-staging` 分支发生，不属于待合入的 PR。
 - 17:22 UTC 前后：Cloudflare API 上传完整 207,449 字符 Worker bundle，`DB` binding 精确绑定该专属 D1，`compatibility_date=2026-08-06`；独立验证初始 Cron 为空，`workers.dev` 开启、preview 关闭。
-- 17:22 UTC：公网真实 smoke [Actions #41224199119](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41224199119)：`/health` HTTP 200 + `publicApi:false`，四个私有路径均 404。
+- 17:22 UTC：公网真实 smoke [Actions #41224199119](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41224199119)：`/health` HTTP 200 + `publicApi:false`，四个私有路径均 404。
 - 17:23 UTC：仅插入来源 `gln003-hn-small`，公共 HTTPS `hnrss.org/newest?count=5`，每 1 小时更新；只对该 Worker 启用 `*/5 * * * *` Cron。Cloudflare 官方说明新 Cron 最长约 15 分钟传播，因此**Cron API 显示成功不代表实际触发已成功**。
 - 17:27 UTC：GitHub Runner HTTP health 及私有路由复验成功；在**同一测试 Worker**上开启 Cloudflare Observability（100% invocation logs、查询参数脱敏）；Analytics SQL `logs.workersLogs` 实测 5 次 HTTP 访问，CPU **0–3ms**，HTTP 200/404 均无异常。这不代表 RSS 解析的 CPU。
 - 17:30–17:31 UTC：首个真实 Cron scheduled 调用触发，HNRSS 上游发生 8 秒请求超时，D1 记录 `fetch_timeout`、`retry_count=1` 和下次到期时间。Analytics SQL 取得该 scheduled **CPU 8ms、wall 9394ms**，未写入任何新闻；这证明失败记录与退避生效，但**不证明成功解析或稳定容量**。隔离 D1 `events.d1Queries` 可单独观察 lease claim、失败更新、积压计算的行读写，不能混入手工 SQL 观测成本。
@@ -162,8 +162,8 @@ Cloudflare 官方实时依据：
 
 **目标与改动：**将原本对每一条新闻分别调用 `DB.prepare(...).bind(...)` 的 1:N SQL 写入，改为 **一次 `json_each(?)` / `json_extract(...)` 批量插入 + 一次拥有者状态更新**，仍以 `DB.batch()` 作为原子事务，并在批量插入的 SQL 内保留 `lease_token` / `lease_expires_at` 条件。保持来源间隔、失败退避、全局 URL 主键、最大候选数 40 和队列原子领取逻辑不变。
 
-- 代码：[PR #7](https://github.com/uichat-mira/cloud-guanlan/pull/7) 优化提交 `5ad91ec`，新增 40-item D1 测试提交 `1d24c47`。CI [Actions #41226821899](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41226821899) **T1 9/9，workerd+D1 T3 13/13，Canary 6/6，Wrangler dry-run、Mira Gate 和 SonarCloud 全绿**。原有超时/事务回滚/过期旧令牌不能写入用例均保留。
-- 实际部署：从上述优化后的 PR 分支创建仅用于 bundle 的 `feat/gln-003-perf-bundle-stage`，GitHub Actions [#41226905681](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41226905681) 编译实际 `src/index.ts`，bundle Git blob `cff903cf9b07493803ca3188eb3268eb36084f00`。临时 write-enabled workflow 在完成后删除，仅新建的 Guanlan Canary Worker 被更新。部署时检查 `Cron=[]`、唯一 D1 binding 指向专属库、Observability enabled。
+- 代码：[PR #7](https://github.com/uichat-mira/cloud-mcp-guanlan/pull/7) 优化提交 `5ad91ec`，新增 40-item D1 测试提交 `1d24c47`。CI [Actions #41226821899](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41226821899) **T1 9/9，workerd+D1 T3 13/13，Canary 6/6，Wrangler dry-run、Mira Gate 和 SonarCloud 全绿**。原有超时/事务回滚/过期旧令牌不能写入用例均保留。
+- 实际部署：从上述优化后的 PR 分支创建仅用于 bundle 的 `feat/gln-003-perf-bundle-stage`，GitHub Actions [#41226905681](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41226905681) 编译实际 `src/index.ts`，bundle Git blob `cff903cf9b07493803ca3188eb3268eb36084f00`。临时 write-enabled workflow 在完成后删除，仅新建的 Guanlan Canary Worker 被更新。部署时检查 `Cron=[]`、唯一 D1 binding 指向专属库、Observability enabled。
 - 对照方法：只从 Canary D1 删除先前 **25 条由 `gln003-cf-status` 创建的测试新闻**，保留另一个小型来源的 2 条新闻，然后把同一 Cloudflare Status `history.atom` 来源调为到期；2026-10-31 17:57 UTC 为 Canary 开启短期 `*/5` Cron。无真实用户数据、无其他 Worker/D1 变更。
 - **本次真实 scheduled 执行（18:05:39 UTC）：CPU 26ms、wall 1,384ms**，成功解析与写入 **25 条 Atom 新闻、25 个不同 URL**；D1 来源状态 `succeeded`、`retry_count=0`、租约 token/expiry 清空，下次到期 `2026-10-31T19:05:38.694Z`。Canary 新闻共 27 条（25 Atom + 2 受控 RSS）。CPU 来源为 Cloudflare Analytics SQL `logs.workersLogs`。
 - **历史基线（17:35 UTC）：CPU 32ms / wall 1,600ms**，同一 Atom feed 首次入库 25 条。单次 CPU 低了 **6ms（18.75%）**，但这只是两次独立观测，可能包含边缘节点、冷启动、上游负载和运行噪声差异，**不能据此承诺稳定下降或容量提升**。

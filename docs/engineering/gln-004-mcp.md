@@ -1,6 +1,6 @@
 # GLN-004 · Remote MCP protocol entry and Cloud Auth boundary
 
-> [Work item #8](https://github.com/uichat-mira/cloud-guanlan/issues/8).
+> [Work item #8](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8).
 > **Status: implemented on a feature branch for review; not deployed.** No production
 > Worker, Cron, D1 migration, Cloud Auth issuance, Desktop/Mobile client or real-user
 > end-to-end authorization is claimed here.

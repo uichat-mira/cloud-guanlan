@@ -1,6 +1,6 @@
 # GLN-005 · D1 多用户基础模型与增量迁移
 
-Issue: [#11](https://github.com/uichat-mira/cloud-guanlan/issues/11). 本文说明**已实现的存储合同**，不宣称 Cloud Auth 或终端接线已经交付。
+Issue: [#11](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11). 本文说明**已实现的存储合同**，不宣称 Cloud Auth 或终端接线已经交付。
 
 ## 单一身份边界
 

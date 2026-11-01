@@ -115,7 +115,7 @@ export function buildMcpProtectedResourceMetadata(config: McpConfig): OAuthProte
     resourceServerUrl: config.resourceUrl,
     scopesSupported: config.requiredScopes,
     resourceName: "Cloud Guanlan",
-    serviceDocumentationUrl: new URL("https://github.com/uichat-mira/cloud-guanlan"),
+    serviceDocumentationUrl: new URL("https://github.com/uichat-mira/cloud-mcp-guanlan"),
   });
   return {
     ...metadata,

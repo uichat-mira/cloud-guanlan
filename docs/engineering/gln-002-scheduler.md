@@ -1,6 +1,6 @@
 # GLN-002 · D1 租约驱动的动态串行调度
 
-> Contract: [Issue #4](https://github.com/uichat-mira/cloud-guanlan/issues/4). Independent of GLN-001 selection POC.
+> Contract: [Issue #4](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/4). Independent of GLN-001 selection POC.
 > Current status: **implementation PR; simulated Workers/D1 evidence only**. No Cloudflare deployment, no production-user data.
 
 ## Implementation boundary
@@ -46,13 +46,13 @@ The fast unit tests cover interval validity, capped deterministic backoff and bo
 
 **GitHub Runner evidence and review repair:**
 
-- [Run 41220939327](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41220939327), code commit `cab7c061`: after repairing delayed-Cron lease time and adding success + failure path regressions, **T1 9/9, workerd+D1 T3 12/12**, Wrangler dry-run, Branch Policy, Repository Contract and Mira Gate **all passed**. The original regression [run 41220818140](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41220818140) had 11/11 workerd/D1 integrations; the final 12th test verifies failed-source retry timing.
-- Core P2 analysis: [PR #5 review](https://github.com/uichat-mira/cloud-guanlan/pull/5). Prior tests advanced scheduledTime but did not model a Cron arriving after the scheduled instant; that oversight is now regression-covered.
+- [Run 41220939327](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41220939327), code commit `cab7c061`: after repairing delayed-Cron lease time and adding success + failure path regressions, **T1 9/9, workerd+D1 T3 12/12**, Wrangler dry-run, Branch Policy, Repository Contract and Mira Gate **all passed**. The original regression [run 41220818140](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41220818140) had 11/11 workerd/D1 integrations; the final 12th test verifies failed-source retry timing.
+- Core P2 analysis: [PR #5 review](https://github.com/uichat-mira/cloud-mcp-guanlan/pull/5). Prior tests advanced scheduledTime but did not model a Cron arriving after the scheduled instant; that oversight is now regression-covered.
 
 **Original POC evidence (pre-review repair):**
 
-- [Actions run 41219774475](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219774475): Repository Contract, Branch Policy, Mira Gate all **success**. Reproducible `npm ci`; `tsc --noEmit`; T1 **9/9**, real Miniflare/workerd + D1 T3 **10/10** (including a 3-hour source interval across 5-minute Cron wakes), Wrangler dry-run and parsing comparison passed.
-- First implementation run [41219502927](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219502927) caught a stale assertion expecting free-form `oversized` text rather than the safe stored error category `feed_too_large`. The test now checks the explicit code while retaining its rejection/no-write assertion. The corrected run [41219566002](https://github.com/uichat-mira/cloud-guanlan/actions/runs/41219566002) was also green.
+- [Actions run 41219774475](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41219774475): Repository Contract, Branch Policy, Mira Gate all **success**. Reproducible `npm ci`; `tsc --noEmit`; T1 **9/9**, real Miniflare/workerd + D1 T3 **10/10** (including a 3-hour source interval across 5-minute Cron wakes), Wrangler dry-run and parsing comparison passed.
+- First implementation run [41219502927](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41219502927) caught a stale assertion expecting free-form `oversized` text rather than the safe stored error category `feed_too_large`. The test now checks the explicit code while retaining its rejection/no-write assertion. The corrected run [41219566002](https://github.com/uichat-mira/cloud-mcp-guanlan/actions/runs/41219566002) was also green.
 - Final measured Worker dry-run artifact: **211.46 KiB / gzip 54.22 KiB**; benchmark-only Feedsmith is not included in the production Worker bundle.
 - **These are only emulated workerd metrics and package size**. Cloudflare Free account billed CPU, D1 row usage and real network error rates have not been measured; no live deployment was performed.
 

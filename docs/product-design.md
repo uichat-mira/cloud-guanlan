@@ -2,7 +2,7 @@
 
 > Status: **产品边界已讨论确认；Workers+D1 POC 与独立 Canary 实测已运行；GLN-004 已在代码中实现受 Cloud Auth 保护的远程 MCP 协议入口，尚未部署，也未通过 Free CPU 稳定性或真实 Cloud Auth 联调验收。尚无生产业务服务。**
 >
-> 日期：2026-11-01 · Owner：Mira Cloud · 仓库：uichat-mira/cloud-guanlan
+> 日期：2026-11-01 · Owner：Mira Cloud · 仓库：uichat-mira/cloud-mcp-guanlan
 >
 > 本文是观澜的产品设计单一真相源。README 只提供导览；实现细节以未来代码、配置及任务契约为准。下文明确区分 **已确定**、**建议方案** 和 **待决**，不可把后两者当成已经获批的功能或已上线能力。
 
@@ -137,7 +137,7 @@ Markdown 作为低心智的默认阅读视图；JSON 作为受 Schema 约束的�
 
 ### 4.3 标准 MCP 是 Mira Agent 的统一工具协议，不是第三方开放入口
 
-[GLN-004](https://github.com/uichat-mira/cloud-guanlan/issues/8) 已交付受保护的 MCP Streamable HTTP 资源服务端。**MCP 是技术协议，Mira 自有 Desktop/Mobile 是唯一产品客户端**。观澜不运行 Agent、不提供第三方客户端注册，也不向最终用户展示通用 MCP OAuth 授权流程。
+[GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 已交付受保护的 MCP Streamable HTTP 资源服务端。**MCP 是技术协议，Mira 自有 Desktop/Mobile 是唯一产品客户端**。观澜不运行 Agent、不提供第三方客户端注册，也不向最终用户展示通用 MCP OAuth 授权流程。
 
 - 既有实现使用 MCP `2026-07-28` 无状态模式与官方 SDK v2，兼容 `2025-06-18`/`2025-11-25` legacy。服务端的 RFC 9728 metadata/401 挑战是已存在的底层协议能力，**不构成建设第三方 OAuth 生态或二次登录页的产品要求**；不得为实现产品目标删除或绕开现有安全检查。
 - Desktop 和 Mobile 的自有云账号客户端根据 Cloud Auth 的有效 Cloud Session **无感换取观澜专用短期凭证**；每次 MCP 请求仍验证 audience、scope、账户与稳定 consumer，不直接把 Cloud Session 当 MCP Token，不把终端凭证硬编码进客户端。
@@ -232,7 +232,7 @@ Mira Cloud Account / 授权消费者
 - 针对同一公开 Atom（25 条、约 32,218 字符），Cloudflare 的 9 次真实 scheduled 三阶段实验：仅拉取 CPU **4/4/6ms（中位 4）**；拉取 + XML 解析/字段归一化 **14/13/31ms（中位 14）**；完整采集含 D1 **18/45/19ms（中位 19）**。完整模式附加测试 SQL，且一次首次写入、两次 URL 去重，不能直接用阶段差当作精确的模块 CPU。
 - **工程判断：解析环节是确定性高增量，D1 完整路径存在高值波动；尚未定位到具体函数的排他性热点。** Free 的 Cron 10ms CPU 上限目前缺乏可靠余量，偶发 26/32/45ms 成功不代表可以长期依赖豁免；不能外推 P95/P99、容量或免费持续稳定性。
 - 验证结束，临时诊断表已清除、正式应用 bundle 已恢复、**Canary Cron 已停用**。保留隔离 Worker/D1 便于后续受控验证，原有 Mira 其他服务不受影响。
-- 研究证据唯一详表：[GLN-003 Cloudflare CPU 三阶段实测](engineering/gln-003-cpu-profile.md)；[GLN-003 隔离部署/容量记录](engineering/gln-003-cloudflare-canary.md)；[Issue #6](https://github.com/uichat-mira/cloud-guanlan/issues/6)。这里只记录产品部署策略和有条件的工程结论，后续新样本统一写回工程报告。
+- 研究证据唯一详表：[GLN-003 Cloudflare CPU 三阶段实测](engineering/gln-003-cpu-profile.md)；[GLN-003 隔离部署/容量记录](engineering/gln-003-cloudflare-canary.md)；[Issue #6](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6)。这里只记录产品部署策略和有条件的工程结论，后续新样本统一写回工程报告。
 
 ## 8. 与 Desktop/Mobile 及现有本地观澜的关系
 
@@ -306,7 +306,7 @@ GLN-001/002 的采集 POC、GLN-003 的隔离 Canary 研究和 GLN-004 已验收
 4. **可运行的后端基线（支撑 C2/C3，但不等于生产发布）**：迁移可重复执行、失败可观测、基础备份/恢复与清理机制有测试；仅在隔离环境做容量和网络实测，不开启未经验收的生产 Cron、不引入付费/第二 Worker/双部署。
 5. **依赖就绪后再接身份与终端（A2 → A3 → A4、A7/A8、B3/B4/B5）**：Cloud Auth 创建/补齐观澜空间、签发内部专用凭证后，接入 Desktop/Mobile 各自的 Agent 与**完整**管理页面；不建通用第三方 OAuth 授权产品。此时才声称完成真实账号端到端验证。
 
-**施工闸门**：第一批只选能够在 `cloud-guanlan` 仓库独立提交、独立验证的最小工作项；其验收证据必须包含实际 D1/workerd 读写与越权负例。正式跨仓库身份注册、真实客户端授权、生产上线分别由后续独立工作项承担。GLN-003 [Issue #6](https://github.com/uichat-mira/cloud-guanlan/issues/6) 仍有未完成的 Free CPU 实证闸门，不因重新排序而被认定为已经完成。
+**施工闸门**：第一批只选能够在 `cloud-mcp-guanlan` 仓库独立提交、独立验证的最小工作项；其验收证据必须包含实际 D1/workerd 读写与越权负例。正式跨仓库身份注册、真实客户端授权、生产上线分别由后续独立工作项承担。GLN-003 [Issue #6](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6) 已以研究型 POC 验收收卡，但 Free CPU 稳定运行尚未放行，后续上线仍必须解决实证闸门。
 
 ### 12.1 A 阶段：真实 Mira Cloud Account → Desktop Agent 消费闭环（8 个候选包）
 
@@ -314,12 +314,12 @@ A 阶段可用少量预置公开 Feed 验证调用和状态处理；必须有真
 
 | 索引 | 归属 | 可验收的成果 |
 | --- | --- | --- |
-| A1 | `cloud-guanlan` | [GLN-004 / Issue #8](https://github.com/uichat-mira/cloud-guanlan/issues/8)：已验收的 MCP 资源服务端、只读工具、现代及 legacy 协议、fail-closed 鉴权；**不含**真实 Cloud Auth 凭证、客户端或生产发布。 |
-| A2 | `cloud-auth` + `cloud-guanlan`（各有明确合同） | Cloud Auth 账号**创建时**自动注册观澜账户空间；幂等重试/补偿、旧账号补齐、删号或禁用场景、跨服务失败可观测。观澜保存自身业务空间，Cloud Auth 不复制其业务数据。 |
+| A1 | `cloud-mcp-guanlan` | [GLN-004 / Issue #8](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8)：已验收的 MCP 资源服务端、只读工具、现代及 legacy 协议、fail-closed 鉴权；**不含**真实 Cloud Auth 凭证、客户端或生产发布。 |
+| A2 | `cloud-auth` + `cloud-mcp-guanlan`（各有明确合同） | Cloud Auth 账号**创建时**自动注册观澜账户空间；幂等重试/补偿、旧账号补齐、删号或禁用场景、跨服务失败可观测。观澜保存自身业务空间，Cloud Auth 不复制其业务数据。 |
 | A3 | `cloud-auth` | **Mira 内部**观澜专用 audience/scope 凭证签发、到期、撤销，可信账户与稳定消费者绑定；Desktop/Mobile 复用现有 Cloud Session 无感获取，不新增用户 OAuth 授权流程，也不复用 Shiyan/Relay 票据。 |
-| A4 | `cloud-guanlan` | 用真实 Cloud Auth Guanlan token 执行 MCP，强制跨账户、跨消费者、有效期、scope、撤销与用户空间关联检查；不接受模型参数冒充消费者，不让无数据空间的账号绕过注册。 |
-| A5 | `cloud-guanlan` | 在既有 D1 索引上增加实际分页/过滤 MCP 读取，保留完整 URL 身份、来源/时间/关注点/授权范围，Markdown/JSON 同一查询语义，失败显式报错。 |
-| A6 | `cloud-guanlan` | 按账户 × 稳定消费者 × 新闻持久记录 pending/adopted/ignored、处理理由与历史；回写幂等，可跨会话/设备恢复，不读取即写回。 |
+| A4 | `cloud-mcp-guanlan` | 用真实 Cloud Auth Guanlan token 执行 MCP，强制跨账户、跨消费者、有效期、scope、撤销与用户空间关联检查；不接受模型参数冒充消费者，不让无数据空间的账号绕过注册。 |
+| A5 | `cloud-mcp-guanlan` | 在既有 D1 索引上增加实际分页/过滤 MCP 读取，保留完整 URL 身份、来源/时间/关注点/授权范围，Markdown/JSON 同一查询语义，失败显式报错。 |
+| A6 | `cloud-mcp-guanlan` | 按账户 × 稳定消费者 × 新闻持久记录 pending/adopted/ignored、处理理由与历史；回写幂等，可跨会话/设备恢复，不读取即写回。 |
 | A7 | `mira-desktop` | 复用已登录 Cloud Account 自动获得 Guanlan 工具凭证，接入真实 MCP/Harness/Policy/Evidence；保留本地 NewsHub 与其他 MCP 能力，不要求用户再登录或手工粘贴 Bearer。 |
 | A8 | 跨仓库联调 | 真实账号创建/用户空间、真实签发和 MCP 调用，Desktop Agent 新闻读取→决策→写回→重连、异账号/异消费者和撤销负例、失败恢复；`dev` 隔离验证，不把单元测试称作生产上线。 |
 
@@ -329,12 +329,12 @@ A 阶段可用少量预置公开 Feed 验证调用和状态处理；必须有真
 
 | 索引 | 归属 | 可验收的成果 |
 | --- | --- | --- |
-| B1 | `cloud-guanlan` | 公共源目录、安全来源发现与订阅输入，含重定向/DNS/IP/SSRF、响应长度、配额与刷新边界；同源可复用采集。 |
-| B2 | `cloud-guanlan` | **账户共享订阅/关注点 + 消费者专属订阅/关注点**，明确继承/覆盖与删除行为，多用户权限隔离与同源去重；配置管理接口与 MCP 复用同一个领域服务。 |
+| B1 | `cloud-mcp-guanlan` | 公共源目录、安全来源发现与订阅输入，含重定向/DNS/IP/SSRF、响应长度、配额与刷新边界；同源可复用采集。 |
+| B2 | `cloud-mcp-guanlan` | **账户共享订阅/关注点 + 消费者专属订阅/关注点**，明确继承/覆盖与删除行为，多用户权限隔离与同源去重；配置管理接口与 MCP 复用同一个领域服务。 |
 | B3 | `mira-mobile` | Local Provider Agent 直接使用同一消费者的 Cloud Auth/MCP 凭证与处理账本，不依赖 Desktop；Remote Host 继续由 Host Harness 执行，凭证和审批不相互搬运。 |
 | B4 | `mira-desktop` | **完整桌面管理 UI**：公开源与自定义来源、账户订阅库、账户/消费者关注点、消费者创建/选择/撤销及状态/错误反馈，不止 MCP 连接入口。 |
 | B5 | `mira-mobile` | **完整移动管理 UI**：同等新闻源、账户订阅库、关注点、消费者及授权管理能力；交互适配移动端，不复制桌面布局或服务端状态机。 |
-| B6 | `cloud-guanlan` | Mira 自有消费者按需使用的可撤销只读 Markdown Web Fetch 链接；不得写状态/订阅，不向第三方推广或绕过内部账号权限。必要性与泄漏面在立项时再次判断。 |
+| B6 | `cloud-mcp-guanlan` | Mira 自有消费者按需使用的可撤销只读 Markdown Web Fetch 链接；不得写状态/订阅，不向第三方推广或绕过内部账号权限。必要性与泄漏面在立项时再次判断。 |
 
 **B 出口：** Desktop 和 Mobile 均能**真正管理**账户/消费者新闻配置；同一消费者跨设备接续；从不要求再次注册或登录观澜。
 
@@ -342,8 +342,8 @@ A 阶段可用少量预置公开 Feed 验证调用和状态处理；必须有真
 
 | 索引 | 归属 | 可验收的成果 |
 | --- | --- | --- |
-| C1 | `cloud-guanlan` + 双端适当 UI | Agent 提案只能生成待审项，只有用户在 Desktop/Mobile 明确批准才能变更账户或消费者配置；默认拒绝无权写入。 |
-| C2 | `cloud-guanlan` | 90 天新闻清理、保留最少指纹/消费记忆、用户删号与消费者撤销/数据清除、容量及请求限额；旧新闻不重复投递。 |
+| C1 | `cloud-mcp-guanlan` + 双端适当 UI | Agent 提案只能生成待审项，只有用户在 Desktop/Mobile 明确批准才能变更账户或消费者配置；默认拒绝无权写入。 |
+| C2 | `cloud-mcp-guanlan` | 90 天新闻清理、保留最少指纹/消费记忆、用户删号与消费者撤销/数据清除、容量及请求限额；旧新闻不重复投递。 |
 | C3 | 云部署与运维 | `dev → test → prod` 验收、备份/回滚、Worker Free CPU 与 D1 使用量、真实大陆客户端入口/境外源出口网络、生产安全和成本。Cloudflare 首选，阿里云经测量后可替代；不预设付费、第二 Worker 或双活。 |
 
 **C 出口：** 可控、可维护、可恢复地在真实环境运行，不把 GLN-003 Canary 单次成功等同于 Free CPU 可持续稳定。
@@ -357,4 +357,4 @@ A 阶段可用少量预置公开 Feed 验证调用和状态处理；必须有真
 - **部署限制**：GLN-004 只入 `dev`，当前尚未联通真实 Cloud Auth、两端 UI 或生产。Workers Free 10ms Cron CPU 仍无充足余量，中国大陆可达性仍要实测；不为了规划而提前多活/开通付费。
 - **执行管理**：GitHub Issue 是任务契约的唯一真相源，本文不维护实施状态台账、不制造已存在的 17 张任务卡；正式派卡前按现行组织 Skill 确认归属、依赖与验收。
 
-**当前已完成的独立合同入口：** [GLN-004](https://github.com/uichat-mira/cloud-guanlan/issues/8)。剩余部分按依赖逐批建正式任务卡；这份规划不自动授权开工或部署。
+**实现入口：** [GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 是 MCP 协议底座，[GLN-005](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11) 是 D1 多用户持久化底座。后续任务的范围、当前状态和验收以 GitHub Issues 为准；本规划不自动授权开工或部署。

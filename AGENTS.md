@@ -1,4 +1,4 @@
-# Cloud Guanlan — Repository Engineering Instructions
+# Cloud MCP Guanlan — Repository Engineering Instructions
 
 Follow the **current** [Mira Organization AGENTS](https://github.com/uichat-mira/.github/blob/main/AGENTS.md), its work-item ID registry, issue lifecycle, testing and environment policies. Do not infer an override from cached instructions.
 
