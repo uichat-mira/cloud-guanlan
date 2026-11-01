@@ -21,7 +21,6 @@ import {
 } from "./config";
 import {
   NEWS_INPUT_SCHEMA,
-  NEWS_LIMIT_DEFAULT,
   NEWS_OUTPUT_SCHEMA,
   NEWS_TOOL_DESCRIPTION,
   NEWS_TOOL_ERRORS,
@@ -31,11 +30,31 @@ import {
   WHOAMI_TOOL_DESCRIPTION,
   WHOAMI_TOOL_NAME,
   renderNewsMarkdown,
-  type NewsPage,
 } from "./capabilities";
-import type { GuanlanNewsReader } from "./service";
+import { NewsReadError, type GuanlanNewsReader } from "./service";
 
 const MAX_REQUEST_BODY_BYTES = 256 * 1024;
+
+/**
+ * Maps a domain failure to an opaque, actionable tool error. Messages never
+ * distinguish "another account/consumer exists" from "it does not", and a
+ * failed read is never rendered as an empty page.
+ */
+function newsToolErrorText(error: unknown): string {
+  const unavailable = `${NEWS_TOOL_ERRORS.unavailable}: the news index could not be read; retry later.`;
+  if (!(error instanceof NewsReadError)) return unavailable;
+  switch (error.code) {
+    case "invalid_cursor":
+      return `${NEWS_TOOL_ERRORS.cursorInvalid}: the cursor is malformed, belongs to another identity or filter set, or was modified; retry without a cursor.`;
+    case "invalid_subject":
+    case "principal_unavailable":
+      return `${NEWS_TOOL_ERRORS.principalUnavailable}: the verified identity has no provisioned Cloud Guanlan space; retry after provisioning.`;
+    case "invalid_query":
+      return `${NEWS_TOOL_ERRORS.queryInvalid}: the query is outside the supported bounds.`;
+    default:
+      return unavailable;
+  }
+}
 
 function buildMcpServer(authInfo: AuthInfo | undefined, reader: GuanlanNewsReader): McpServer {
   const principal = principalFromAuthInfo(authInfo);
@@ -53,22 +72,27 @@ function buildMcpServer(authInfo: AuthInfo | undefined, reader: GuanlanNewsReade
       outputSchema: NEWS_OUTPUT_SCHEMA,
       annotations: READ_ONLY_ANNOTATIONS,
     },
-    async ({ limit }) => {
-      const requested = limit ?? NEWS_LIMIT_DEFAULT;
+    async (args) => {
       try {
-        const items = await reader.listRecent(principal, { limit: requested });
-        const page: NewsPage = { items, count: items.length, limit: requested };
+        const page = await reader.listPage(principal, {
+          limit: args.limit,
+          cursor: args.cursor,
+          sourceId: args.sourceId,
+          status: args.status,
+          keyword: args.keyword,
+          ingestedAfter: args.ingestedAfter,
+          ingestedBefore: args.ingestedBefore,
+          publishedAfter: args.publishedAfter,
+          publishedBefore: args.publishedBefore,
+        });
         return {
           content: [{ type: "text", text: renderNewsMarkdown(page) }],
           structuredContent: page,
         };
-      } catch {
+      } catch (error) {
         // A failed read is an explicit tool error, never a plausible empty page.
         return {
-          content: [{
-            type: "text",
-            text: `${NEWS_TOOL_ERRORS.unavailable}: the news index could not be read; retry later.`,
-          }],
+          content: [{ type: "text", text: newsToolErrorText(error) }],
           isError: true,
         };
       }

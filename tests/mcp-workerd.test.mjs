@@ -31,7 +31,12 @@ async function withWorker(scriptPath, bindings, run) {
   });
   try {
     const db = await mf.getD1Database("DB");
-    for (const path of ["migrations/0001_poc.sql", "migrations/0002_source_leases.sql"]) {
+    for (const path of [
+      "migrations/0001_poc.sql",
+      "migrations/0002_source_leases.sql",
+      "migrations/0003_guanlan_accounts.sql",
+      "migrations/0004_consumer_news_state.sql",
+    ]) {
       const sql = await readFile(path, "utf8");
       for (const statement of sql.split(";").map(s => s.trim()).filter(Boolean)) {
         await db.prepare(statement).run();
@@ -57,6 +62,19 @@ async function seed(db) {
     "2026-10-31T00:00:00.000Z",
     "2026-10-31T00:01:00.000Z",
   ).run();
+  // GLN-009: the news tool is authorized per account × consumer, so the MCP
+  // fixture identity needs a provisioned space and one effective source.
+  const createdAt = "2026-10-31T00:00:00.000Z";
+  await db.prepare("INSERT INTO guanlan_accounts (account_id,created_at) VALUES (?,?)")
+    .bind("account-a", createdAt).run();
+  for (const consumerId of ["consumer-1", "consumer-2"]) {
+    await db.prepare("INSERT INTO guanlan_consumers (account_id,consumer_id,created_at) VALUES (?,?,?)")
+      .bind("account-a", consumerId, createdAt).run();
+  }
+  await db.prepare(`
+    INSERT INTO guanlan_account_subscriptions (account_id,source_id,interval_hours,created_at)
+    VALUES (?,?,?,?)
+  `).bind("account-a", "feed-1", 1, createdAt).run();
 }
 
 function disconnectedFetch(mf) {
