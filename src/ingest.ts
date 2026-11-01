@@ -3,6 +3,7 @@ import {
   INVOCATION_WALL_BUDGET_MS, LEASE_MS, MAX_FEED_BYTES,
   MAX_SOURCES_PER_INVOCATION, SOURCE_TIMEOUT_MS, nextFailureAt, nextSuccessAt
 } from "./scheduler";
+import { evaluateSourceUrl } from "./source-safety";
 
 type Source = { id: string; url: string; interval_hours: number; retry_count: number; lease_token: string };
 type Binding = { fetch(request: Request): Promise<Response> };
@@ -15,36 +16,90 @@ export type CollectOutcome = {
 };
 
 const iso = (t:number) => new Date(t).toISOString();
+
+// Every persisted failure is a closed enum: no source URL, token, response
+// header or body content can reach D1 or logs through this path.
+const SAFE_FAILURE_MESSAGES = new Set([
+  "feed_too_large", "invalid_source", "empty_body", "empty_feed", "unsupported_redirect",
+  "fetch_timeout",
+  "source_url_invalid", "source_scheme_rejected", "source_userinfo_rejected",
+  "source_host_rejected", "source_private_address", "source_ip_literal_rejected",
+  "source_port_rejected", "source_not_approved"
+]);
 const safeFailure = (error:unknown): string => {
   if (!(error instanceof Error)) return "unknown_failure";
   if (/^feed_http_[0-9]{3}$/.test(error.message)) return error.message;
-  if (["feed_too_large", "invalid_source", "empty_body", "empty_feed", "unsupported_redirect"].includes(error.message)) return error.message;
+  if (SAFE_FAILURE_MESSAGES.has(error.message)) return error.message;
   if (error.name === "AbortError" || error.name === "TimeoutError") return "fetch_timeout";
-  return "fetch_or_parse_error"; // never persist arbitrary upstream URLs, tokens, or response content
+  return "fetch_or_parse_error";
 };
 
-export async function fetchLimited(urlString:string, fetcher:(req:Request)=>Promise<Response>):Promise<string> {
-  const u = new URL(urlString);
-  if (u.protocol !== "https:" || u.username || u.password ||
-      u.hostname === "localhost" || u.hostname.endsWith(".local")) throw new Error("invalid_source");
-  // Untrusted source URLs still require complete DNS/IP/SSRF hardening before user-facing ingestion.
-  // Redirects are not followed; the fetch is aborted on a fixed wall deadline.
-  const request = new Request(urlString, {
+const FETCH_TIMEOUT = "fetch_timeout";
+
+/**
+ * Races one asynchronous step against the remaining wall budget. The original
+ * promise always gets handlers attached, so a late rejection after the timeout
+ * cannot surface as an unhandled rejection.
+ */
+function withDeadline<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error(FETCH_TIMEOUT)), Math.max(1, timeoutMs));
+    promise.then(
+      value => { clearTimeout(timer); resolve(value); },
+      error => { clearTimeout(timer); reject(error); }
+    );
+  });
+}
+
+export type FetchLimitedOptions = {
+  /** Total wall budget for the response headers plus the entire body. */
+  readonly timeoutMs?: number;
+};
+
+/**
+ * The only network path for an untrusted source URL.
+ *
+ * Order matters: the shared `evaluateSourceUrl` policy runs before any Request
+ * is constructed, so an unapproved or unsafe source never reaches the network.
+ * The approved canonical URL is fetched with `redirect: "manual"` (3xx is an
+ * error, never followed), and the body is bounded both by the declared
+ * Content-Length and by a real streamed byte count, so a missing or lying
+ * header cannot bypass the limit. A single wall deadline covers headers and
+ * body; a stalled response is aborted and the reader is cancelled.
+ */
+export async function fetchLimited(
+  urlString:string,
+  fetcher:(req:Request)=>Promise<Response>,
+  options:FetchLimitedOptions = {}
+):Promise<string> {
+  const decision = evaluateSourceUrl(urlString);
+  if (!decision.ok) throw new Error(decision.reason);
+
+  const timeoutMs = options.timeoutMs ?? SOURCE_TIMEOUT_MS;
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) throw new Error("invalid_source");
+  const deadline = Date.now() + timeoutMs;
+
+  const request = new Request(decision.canonicalUrl, {
     redirect: "manual",
-    signal: AbortSignal.timeout(SOURCE_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
     headers: { accept: "application/rss+xml, application/atom+xml, application/xml, text/xml" }
   });
-  const response = await fetcher(request);
+  const response = await withDeadline(fetcher(request), timeoutMs);
   if (response.status >= 300 && response.status < 400) throw new Error("unsupported_redirect");
   if (!response.ok) throw new Error("feed_http_" + response.status);
-  if (Number(response.headers.get("content-length") || 0) > MAX_FEED_BYTES) throw new Error("feed_too_large");
+  const declaredLength = response.headers.get("content-length");
+  // An absent or non-numeric header is not trusted; the streamed count below
+  // remains the authoritative limit either way.
+  if (declaredLength !== null && Number(declaredLength) > MAX_FEED_BYTES) throw new Error("feed_too_large");
   if (!response.body) throw new Error("empty_body");
   const reader = response.body.getReader();
   const chunks:Uint8Array[] = [];
   let total = 0;
   try {
     while(true) {
-      const {done,value} = await reader.read();
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) throw new Error(FETCH_TIMEOUT);
+      const {done,value} = await withDeadline(reader.read(), remaining);
       if (done) break;
       total += value.byteLength;
       if (total > MAX_FEED_BYTES) throw new Error("feed_too_large");
