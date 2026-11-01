@@ -1,4 +1,10 @@
 import * as z from "zod/v4";
+import {
+  CONSUMPTION_OPERATION_ID_MAX,
+  CONSUMPTION_OUTCOME_URL_MAX,
+  CONSUMPTION_REASON_MAX,
+  CONSUMPTION_STATUSES,
+} from "../consumption";
 
 export const NEWS_TOOL_NAME = "guanlan_news_recent";
 export const WHOAMI_TOOL_NAME = "guanlan_whoami";
@@ -10,13 +16,11 @@ export const NEWS_LIMIT_MAX = 50;
  * Writable decision states. `unread` is deliberately absent: it is the absence
  * of a GLN-007 ledger row, never a value a client may write.
  */
-export const DECIDE_STATUS_VALUES = ["pending", "adopted", "ignored"] as const;
-/** Mirrors the GLN-007 `last_operation_id` storage bound. */
-export const DECIDE_OPERATION_ID_MAX = 128;
-/** Mirrors the GLN-007 `reason` storage bound. */
-export const DECIDE_REASON_MAX = 500;
-/** Mirrors the GLN-007 `outcome_url` storage bound. */
-export const DECIDE_OUTCOME_URL_MAX = 2_048;
+export const DECIDE_STATUS_VALUES = CONSUMPTION_STATUSES;
+/** GLN-007 storage bounds, imported so schema and ledger can never drift. */
+export const DECIDE_OPERATION_ID_MAX = CONSUMPTION_OPERATION_ID_MAX;
+export const DECIDE_REASON_MAX = CONSUMPTION_REASON_MAX;
+export const DECIDE_OUTCOME_URL_MAX = CONSUMPTION_OUTCOME_URL_MAX;
 
 /** Tool output is bounded before it enters MCP schemas. */
 export const NEWS_TITLE_MAX = 500;
@@ -210,10 +214,13 @@ export const DECIDE_TOOL_DESCRIPTION =
   "from the verified access token; arguments cannot select another account or consumer. Writing additionally " +
   "requires the independent `guanlan.write` scope: a read-only credential can call the read tools but can never " +
   "change state. Pass the `stateVersion` from guanlan_news_recent as `expectedVersion` (0 when unread) and a fresh " +
-  "`operationId` per decision; retrying the same decision with the same id is a safe `replayed` no-op, a stale " +
-  "version is a `version_conflict` that never overwrites newer state, and reusing an id for different content is an " +
-  "`operation_conflict`. Unknown articles and articles outside this consumer's authorized sources share one opaque " +
-  "`not_available` answer. Reading news never writes a decision.";
+  "`operationId` for every article; the id is idempotent per article, so retrying the same decision with the same " +
+  "id is a safe `replayed` no-op, a stale version is a `version_conflict` that never overwrites newer state, and " +
+  "reusing the id for different content on the same article is an `operation_conflict`. An id reused on a " +
+  "different article is a separate decision. Values outside the documented bounds (including surrounding " +
+  "whitespace or a non-http(s) outcome link) are rejected as `guanlan_decision_invalid`. Unknown articles and " +
+  "articles outside this consumer's authorized sources share one opaque `not_available` answer. Reading news " +
+  "never writes a decision.";
 
 export function renderNewsMarkdown(page: NewsPage): string {
   const lines = [

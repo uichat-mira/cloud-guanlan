@@ -275,16 +275,23 @@ test("real workerd: authorized read → stateVersion → decide → re-read → 
       });
       assert.match(errorText(operationConflict), /guanlan_decision_operation_conflict/);
 
-      // 7. A truthful new decision with the current version advances the version.
-      const second = decisionOf(await callDecide(client, {
+      // 7. A truthful new decision with the current version advances the version,
+      // and its Markdown is rendered from the same result object as its JSON.
+      const secondCall = await callDecide(client, {
         url: NEWS.shared1,
         status: "ignored",
         expectedVersion: 1,
         operationId: "op-ignore-2",
-      }));
+      });
+      const second = decisionOf(secondCall);
       assert.equal(second.result, "updated");
       assert.equal(second.state.version, 2);
       assert.equal(second.state.status, "ignored");
+      const secondMarkdown = secondCall.content[0].text;
+      assert.match(secondMarkdown, /# Cloud Guanlan decision · updated/);
+      assert.match(secondMarkdown, /Status: ignored/);
+      assert.match(secondMarkdown, /Version: 2/);
+      assert.match(secondMarkdown, /URL: https:\/\/news\.example\.com\/shared\/1/);
 
       // 8. Out-of-order old writes never overwrite the newer decision.
       const late = await callDecide(client, {
@@ -297,17 +304,22 @@ test("real workerd: authorized read → stateVersion → decide → re-read → 
       assert.match(errorText(late), /"version":2/);
       assert.equal(await ledgerCount(db), 1);
 
-      // 9. JSON and Markdown describe the same successful decision.
-      const markdown = (await callDecide(client, {
+      // 9. JSON and Markdown describe the same successful decision (one call).
+      const markdownCall = await callDecide(client, {
         url: NEWS.shared2,
         status: "pending",
         expectedVersion: 0,
         operationId: "op-markdown",
-      })).content[0].text;
+      });
+      const markdownDecision = decisionOf(markdownCall);
+      assert.equal(markdownDecision.result, "updated");
+      assert.equal(markdownDecision.state.status, "pending");
+      assert.equal(markdownDecision.state.version, 1);
+      const markdown = markdownCall.content[0].text;
       assert.match(markdown, /# Cloud Guanlan decision · updated/);
       assert.match(markdown, /Status: pending/);
       assert.match(markdown, /Version: 1/);
-      assert.match(markdown, new RegExp(NEWS.shared2.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+      assert.match(markdown, /URL: https:\/\/news\.example\.com\/shared\/2/);
     } finally {
       await client.close();
     }
@@ -565,6 +577,19 @@ test("real workerd: invalid input, unprovisioned writers and legacy clients stay
         assert.equal(legacyDecision.state.version, 1);
       } finally {
         await legacy.client.close();
+      }
+
+      // The 2025-11-25 stateless legacy client reaches the same write tool too.
+      const legacy25 = await connect(mf, "fixture-writer-1", { supportedProtocolVersions: ["2025-11-25"] });
+      try {
+        assert.equal(legacy25.client.getProtocolEra(), "legacy");
+        const legacy25Decision = decisionOf(await callDecide(legacy25.client, {
+          url: NEWS.shared2, status: "adopted", expectedVersion: 0, operationId: "legacy-25-op",
+        }));
+        assert.equal(legacy25Decision.result, "updated");
+        assert.equal(legacy25Decision.state.version, 1);
+      } finally {
+        await legacy25.client.close();
       }
     } finally {
       await writer.client.close();

@@ -33,7 +33,7 @@ Issue: [#22](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/22). 本文
 | `url` | 规范新闻 URL（与 `guanlan_news_recent` 的 `id`/`url` 一致）；复用采集的 `canonicalNewsUrl` 规则 |
 | `status` | `pending` / `adopted` / `ignored`；`unread` 不可写（它是“没有行”） |
 | `expectedVersion` | CAS 前置版本：上一次读到的 `stateVersion`，未读为 `0` |
-| `operationId` | 单次决策的幂等键（1..128，无首尾空白）；相同决策重试必须复用，新决策必须更换 |
+| `operationId` | 单次决策的幂等键（1..128，无首尾空白）；**幂等范围是 (account, consumer, 新闻条目)**：同一决策重试必须复用，同一新闻的新决策必须更换；不同新闻可复用同一 id，但推荐每条新闻使用唯一 id |
 | `reason?` | 可选 1..500 字符，无首尾空白 |
 | `outcomeUrl?` | 可选 1..2048 字符的 http(s) 成果链接 |
 
@@ -69,7 +69,7 @@ Issue: [#22](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/22). 本文
 | --- | --- | --- |
 | 成功写入 | —（`result: updated`） | 版本 +1（或首次为 1） |
 | 相同 `operationId` 完全相同重试 | —（`result: replayed`） | 不增版本、不改时间戳 |
-| `expectedVersion` 过期/并发落后 | `guanlan_decision_version_conflict` | 文本附当前受限状态 JSON（status/version/reason/outcomeUrl/decidedAt） |
+| `expectedVersion` 过期/并发落后 | `guanlan_decision_version_conflict` | 文本附当前受限状态 JSON（`url`/status/version/reason/outcomeUrl/decidedAt）；无已存行但传了非零版本时该 JSON 为 `{"status":"unread","version":0,...}` |
 | 同一 `operationId` 携带不同内容 | `guanlan_decision_operation_conflict` | 不静默改写；文本附当前状态 |
 | 新闻不存在 / 来源不在有效集合 | `guanlan_decision_not_available` | **同一不透明错误**，不区分“不存在”与“无权/属于他人账户” |
 | 无 `guanlan.write` | `guanlan_decision_forbidden` | 只读凭证不得改状态 |
@@ -82,7 +82,8 @@ Issue: [#22](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/22). 本文
 ## 幂等、并发与重启
 
 - 写路径完全复用 GLN-007 的单条条件 `INSERT ... ON CONFLICT DO UPDATE ... WHERE` 事务；本卡不新增 CAS 规则、不加锁、不建进程内缓存。
-- 重放识别只依赖 D1 的 `last_operation_id`，因此跨请求、跨设备、跨 worker 重启都有效。
+- 重放识别只依赖 D1 的 `last_operation_id`，且按 `(account_id, consumer_id, news_fingerprint)` 一行一个 `last_operation_id`；因此同一 `operationId` 用于**另一条新闻**不会冲突，而是那条新闻的独立决策。客户端应为每条新闻使用新的 `operationId`（例如 UUID）。
+- 该识别跨请求、跨设备、跨 worker 重启都有效。
 - 同一 `expectedVersion` 的并发写恰好一个胜出，另一个得到 `version_conflict`。
 - 乱序旧写不会覆盖较新决策。
 - T3 用独立 `d1Persist` 目录在两个真实 Miniflare 实例间验证：重启后状态与版本仍在，且相同 `operationId` 仍识别为 `replayed`。
@@ -112,3 +113,6 @@ T3 覆盖：写工具发现与注解；只读凭证 `forbidden` 且账本零写�
 3. **冲突回传形式**：`version_conflict`/`operation_conflict` 的当前状态是文本中的受限 JSON，而不是 `structuredContent`；这是为保持“错误无 structuredContent”的既有边界。若后续客户端需要机器可读错误负载，应作为独立合同裁决。
 4. **未做**：Cloud Agent/Pi 接线、Desktop/Mobile UI、订阅变更写工具、管理 API、第二套身份或 Gateway。
 5. **写 scope 的 metadata 声明**：`scopes_supported` 暂不包含 `guanlan.write`，避免把未签发能力宣称为已开通；正式签发后应同步更新发现文档。
+6. **读/写授权口径的继承差异**：GLN-007 的读路径接受「已存决策来源 ∪ 新闻当前来源」，而写路径只按新闻当前来源授权。若一条新闻在决策后更换了来源，读取页可能仍返回它的 `stateVersion`，但写回会得到不透明的 `not_available`。这是 GLN-007 的既有语义，本卡未改变；需要在后续合同里统一，或明确读路径也只按当前来源。
+7. **写工具的兜底错误**：处理器把非预期异常折叠为 `guanlan_decision_unavailable` 而不是原样抛出，因为官方 SDK 会把抛出的异常文本直接回显给客户端（可能泄漏内部细节）。数据库/账本故障本身已由 `ConsumptionLedgerError` 明确表示；非预期编程缺陷目前与存储故障共用同一客户端错误码，后续应通过服务端日志/告警区分。
+8. **Schema 与领域校验的分工**：`reason`/`outcomeUrl`/`operationId` 的「无首尾空白」「http(s) 链接」由 GLN-007 领域校验最终裁决，MCP Schema 只约束长度与枚举；越界会得到明确的 `guanlan_decision_invalid`，而不是被静默接受。
