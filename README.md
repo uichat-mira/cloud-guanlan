@@ -6,7 +6,7 @@
 
 观澜负责“采集和记账”，不负责“理解与决策”。外部 Agent 自行选择是否 Web Fetch 原文、是否采用新闻，并明确回写处理结果。
 
-> **当前能力：** 已有公共 Feed 采集与 D1 租约/去重 POC、受保护的只读 MCP 服务端、GLN-005 的多用户数据模型，以及 GLN-006 有效订阅读取、GLN-007 消费者决策账本和 GLN-009 的**按账户 × 稳定消费者授权、可分页/可筛选消费状态**的 MCP 新闻读取。GLN-003 的隔离 Cloudflare 实测已完成研究验收，但 Workers Free 持续 Cron CPU 裕量仍未获放行；真实 Cloud Auth 账号联调、MCP 状态写回工具、Desktop/Mobile 接入和生产上线尚未完成。
+> **当前能力：** 已有公共 Feed 采集与 D1 租约/去重 POC、受保护的只读 MCP 服务端、GLN-005 的多用户数据模型，以及 GLN-006 有效订阅读取、GLN-007 消费者决策账本、GLN-009 的**按账户 × 稳定消费者授权、可分页/可筛选消费状态**的 MCP 新闻读取，和 GLN-010 的 **MCP 消费状态写回工具 `guanlan_news_decide`**（复用 GLN-007 CAS/幂等账本，读取页返回 `stateVersion`，写入需独立 `guanlan.write` scope）。GLN-003 的隔离 Cloudflare 实测已完成研究验收，但 Workers Free 持续 Cron CPU 裕量仍未获放行；真实 Cloud Auth 账号与 `guanlan.write` 正式签发联调、Desktop/Mobile 接入和生产上线尚未完成。
 > 请勿将本 README 中的目标能力理解为已经上线的 API 或 Cloudflare 服务。
 
 ## 设计入口
@@ -47,9 +47,10 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-[GLN-003](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6) 是已完成的隔离运行研究，结论仍是不批准依赖 Free 10ms CPU 的长期 Cron；相关 Canary 保留且调度关闭。[GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 的远程 MCP 协议代码已并入 `dev`，但不代表真实 Cloud Auth 令牌或客户端已经接通。[GLN-005](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11) 的多用户持久化模型也已进入 `dev`。[GLN-008](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/15) 的来源安全准入（精确测试 URL 白名单 + fail-closed URL 策略 + 受控登记）由 [PR #19](https://github.com/uichat-mira/cloud-mcp-guanlan/pull/19) 交付 `dev`；未部署、未开启 Cron，也未证明真实 DNS 出站防护或 Free CPU 长期余量。[GLN-006](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/13)、[GLN-007](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/14) 与 [GLN-009](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/16) 的领域合同（有效订阅、决策账本、授权分页读取）同样只进入 `dev`，仍无真实 Cloud Auth 账号、状态写回工具或生产部署。
+[GLN-003](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6) 是已完成的隔离运行研究，结论仍是不批准依赖 Free 10ms CPU 的长期 Cron；相关 Canary 保留且调度关闭。[GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 的远程 MCP 协议代码已并入 `dev`，但不代表真实 Cloud Auth 令牌或客户端已经接通。[GLN-005](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11) 的多用户持久化模型也已进入 `dev`。[GLN-008](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/15) 的来源安全准入（精确测试 URL 白名单 + fail-closed URL 策略 + 受控登记）由 [PR #19](https://github.com/uichat-mira/cloud-mcp-guanlan/pull/19) 交付 `dev`；未部署、未开启 Cron，也未证明真实 DNS 出站防护或 Free CPU 长期余量。[GLN-006](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/13)、[GLN-007](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/14) 与 [GLN-009](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/16) 的领域合同（有效订阅、决策账本、授权分页读取）同样只进入 `dev`。[GLN-010](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/22) 的 MCP 写回工具在本分支实现，使用受控测试凭证完成真实 MCP 客户端与 workerd/D1 验收；它**不是**已签发的 Cloud Auth 写权限，也未部署，仍无真实 Cloud Auth 账号、正式 `guanlan.write` 签发或生产部署。
 
 - [仓库工程约束](AGENTS.md)
+- [GLN-010 MCP 消费状态写回](docs/engineering/gln-010-mcp-consumption-write.md)：写工具 Schema、独立写 scope、`stateVersion`、错误/幂等合同与验收证据。
 - [GLN-009 授权新闻分页与消费状态查询](docs/engineering/gln-009-authorized-news-reader.md)：查询/游标/状态合同、SQL 方案与剩余裁决项。
 - [GLN-008 来源安全准入与受控采集边界](docs/engineering/gln-008-source-safety.md)：接受/拒绝矩阵、Workers 能力限制与剩余安全边界。
 - [Issue 任务卡与付费 OpenCode Worker 使用说明](docs/engineering/work-items.md)

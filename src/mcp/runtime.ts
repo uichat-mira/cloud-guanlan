@@ -1,7 +1,12 @@
 import { createCloudAuthVerifier, type GuanlanTokenVerifier } from "./auth";
 import { resolveMcpConfig, type McpEnv } from "./config";
 import { createGuanlanMcp, type GuanlanMcpRuntime } from "./server";
-import { createD1NewsReader, type GuanlanNewsReader } from "./service";
+import {
+  createD1NewsDecider,
+  createD1NewsReader,
+  type GuanlanNewsDecider,
+  type GuanlanNewsReader,
+} from "./service";
 
 export type McpRuntimeEnv = McpEnv & { DB: D1Database };
 
@@ -9,6 +14,7 @@ export type McpRuntimeOptions = {
   /** Test-only injection; the deployed entry never supplies this. */
   verifier?: GuanlanTokenVerifier;
   reader?: GuanlanNewsReader;
+  decider?: GuanlanNewsDecider;
 };
 
 export type McpRuntimeResult =
@@ -27,7 +33,7 @@ export function createMcpRuntime(env: McpRuntimeEnv, options: McpRuntimeOptions 
   if (!resolved.ok) return resolved;
 
   const { config } = resolved;
-  if (options.verifier || options.reader) {
+  if (options.verifier || options.reader || options.decider) {
     const verifier = options.verifier ?? createCloudAuthVerifier({
       issuer: config.tokenIssuer,
       audience: config.audience,
@@ -35,7 +41,8 @@ export function createMcpRuntime(env: McpRuntimeEnv, options: McpRuntimeOptions 
       consumerClaim: config.consumerClaim,
     });
     const reader = options.reader ?? createD1NewsReader(env.DB);
-    return { ok: true, runtime: createGuanlanMcp(config, verifier, reader) };
+    const decider = options.decider ?? createD1NewsDecider(env.DB);
+    return { ok: true, runtime: createGuanlanMcp(config, verifier, reader, decider) };
   }
 
   const key = [
@@ -63,7 +70,7 @@ export function createMcpRuntime(env: McpRuntimeEnv, options: McpRuntimeOptions 
   });
   const result: McpRuntimeResult = {
     ok: true,
-    runtime: createGuanlanMcp(config, verifier, createD1NewsReader(env.DB)),
+    runtime: createGuanlanMcp(config, verifier, createD1NewsReader(env.DB), createD1NewsDecider(env.DB)),
   };
   byKey.set(key, result);
   return result;

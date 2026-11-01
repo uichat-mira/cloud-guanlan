@@ -302,6 +302,8 @@ test("status filtering, page fill and continuation cursor follow the scanned str
   assert.equal(page.limit, 2);
   assert.equal(page.nextCursor, null);
   assert.deepEqual(page.items.map(item => item.status), ["unread", "unread"]);
+  // GLN-010: an implied unread has version 0, the CAS precondition for a first write.
+  assert.deepEqual(page.items.map(item => item.stateVersion), [0, 0]);
 });
 
 test("an explicit history status returns adopted/ignored items and their status", async () => {
@@ -314,6 +316,8 @@ test("an explicit history status returns adopted/ignored items and their status"
     ["https://example.com/b", "adopted"],
     ["https://example.com/c", "ignored"],
   ]);
+  // A stored decision exposes its ledger version as the next expectedVersion.
+  assert.deepEqual(page.items.map(item => item.stateVersion), [1, 1]);
 });
 
 test("a filled page returns a cursor that resumes exactly after the last scanned row", async () => {
@@ -376,6 +380,7 @@ test("Markdown and JSON render the same page, including status, size and cursor"
       publishedAt: "2026-10-31T00:00:00.000Z",
       ingestedAt: "2026-11-01T00:00:00.000Z",
       status: "pending",
+      stateVersion: 1,
     }],
     count: 1,
     limit: 20,

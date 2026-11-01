@@ -8,6 +8,17 @@ import {
 export const MCP_RESOURCE_PATH = "/mcp";
 export const MCP_METADATA_PATH = "/.well-known/oauth-protected-resource/mcp";
 export const GUANLAN_REQUIRED_SCOPE = "guanlan.read";
+/**
+ * Independent write authority for `guanlan_news_decide`. It is intentionally
+ * not part of `requiredScopes`: the global `/mcp` bearer gate must keep
+ * accepting read-only credentials, and the write tool checks this scope itself.
+ * The name is the planned Cloud Auth scope; formal issuance is owned by the
+ * Cloud Auth contract and is not claimed here.
+ */
+export const GUANLAN_WRITE_SCOPE = "guanlan.write";
+/** True only for a credential that carries the explicit Guanlan write scope. */
+export const hasWriteScope = (scopes: readonly string[]): boolean =>
+  scopes.includes(GUANLAN_WRITE_SCOPE);
 /** Cloud Auth service credentials have a deployment-neutral JWT issuer. */
 export const CLOUD_AUTH_TOKEN_ISSUER = "mira:cloud-auth";
 export const GUANLAN_SERVICE_AUDIENCE = "mira:cloud-guanlan";

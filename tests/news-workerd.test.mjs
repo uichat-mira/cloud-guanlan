@@ -212,7 +212,10 @@ test("real D1: same URL has a different status per consumer, and history needs a
       // Consumer 1 default: unread + pending. shared1 is pending, shared2 is ignored.
       const a1Default = await callNews(a1.client, { limit: 50 });
       const a1Items = itemsOf(a1Default);
-      assert.equal(a1Items.find(item => item.url === NEWS.shared1).status, "pending");
+      const pendingItem = a1Items.find(item => item.url === NEWS.shared1);
+      assert.equal(pendingItem.status, "pending");
+      // GLN-010: the page exposes the stored decision version for CAS writes.
+      assert.equal(pendingItem.stateVersion, 1);
       assert.equal(a1Items.some(item => item.url === NEWS.shared2), false);
       assert.equal(a1Items.some(item => item.url === NEWS.a2), false);
 
@@ -223,7 +226,10 @@ test("real D1: same URL has a different status per consumer, and history needs a
       // Consumer 2 default: shared1 is adopted, so it is history for consumer 2.
       const a2Default = itemsOf(await callNews(a2.client, { limit: 50 }));
       assert.equal(a2Default.some(item => item.url === NEWS.shared1), false);
-      assert.equal(a2Default.find(item => item.url === NEWS.shared2).status, "unread");
+      const unreadItem = a2Default.find(item => item.url === NEWS.shared2);
+      assert.equal(unreadItem.status, "unread");
+      // No ledger row = implied unread = version 0.
+      assert.equal(unreadItem.stateVersion, 0);
 
       // Consumer 2 history: adopted shared1 only; consumer 1's decisions never leak.
       const a2Adopted = itemsOf(await callNews(a2.client, { status: ["adopted"], limit: 50 }));
@@ -492,6 +498,7 @@ test("real D1: JSON and Markdown describe the same authorized page", async () =>
       for (const item of page.items) {
         assert.ok(markdown.includes(item.url), "complete URL identity");
         assert.ok(markdown.includes(`Status: ${item.status}`));
+        assert.ok(markdown.includes(`State version: ${item.stateVersion}`));
         assert.ok(markdown.includes(item.title));
         assert.ok(markdown.includes(`Source: ${item.sourceId}`));
       }
@@ -556,10 +563,10 @@ test("real D1: WHOAMI still reports the token-derived identity and the tool stay
     const { client } = await connect(mf, "fixture-consumer-1", modern());
     try {
       const listed = await client.listTools();
-      assert.deepEqual(listed.tools.map(tool => tool.name).sort(), ["guanlan_news_recent", "guanlan_whoami"]);
+      assert.deepEqual(listed.tools.map(tool => tool.name).sort(), ["guanlan_news_decide", "guanlan_news_recent", "guanlan_whoami"]);
       for (const tool of listed.tools) {
-        assert.equal(tool.annotations?.readOnlyHint, true);
         assert.equal(tool.annotations?.destructiveHint, false);
+        if (tool.name !== "guanlan_news_decide") assert.equal(tool.annotations?.readOnlyHint, true);
       }
       const whoami = await client.callTool({ name: "guanlan_whoami", arguments: {} });
       assert.equal(whoami.structuredContent.accountId, "account-a");
