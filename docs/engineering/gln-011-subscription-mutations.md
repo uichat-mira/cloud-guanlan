@@ -100,7 +100,7 @@
 - 只操作 `poc_sources` 中真实存在、且 `url` 仍通过 `evaluateSourceUrl`（GLN-008 精确白名单）的来源。
 - 历史 `poc_sources` 行（例如 `https://example.com/legacy.xml`）不会因为存在就变成可订阅来源；返回 `source_not_approved`。
 - 来源 id 不是安全边界：判断以存储 URL 为准。把已批准行的 URL 改成未批准值后，同一 id 立即被拒绝；手工行只要 URL 精确命中批准清单则可订阅（仍受 UNIQUE URL 约束）。
-- 不登记新来源、不写 `poc_sources`、不写 `poc_news`、不改 `interval_hours`/`due_at`/租约/`retry_count`/Cron；T3 用前后快照证明这些表逐字节不变。
+- 不登记新来源、不写 `poc_sources`、不写 `poc_news`、不改 `interval_hours`/`due_at`/租约/`retry_count`/Cron；T3 用前后行快照证明这些表逐行一致。
 - 不写 `guanlan_account_interests` / `guanlan_consumer_interests` / `guanlan_consumer_news_states`。
 
 ## 7. 数据模型与非目标
