@@ -2,9 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { createLocalJWKSet, exportJWK, generateKeyPair, SignJWT } from "jose";
 import {
+  DECIDE_TOOL_NAME,
   NEWS_TOOL_NAME,
   READ_ONLY_ANNOTATIONS,
   WHOAMI_TOOL_NAME,
+  WRITE_ANNOTATIONS,
   createCloudAuthVerifier,
   createFixtureVerifier,
   createMcpRuntime,
@@ -159,10 +161,20 @@ test("modern tools/list and tools/call use the shared capability definitions", a
   assert.equal(listResponse.headers.get("mcp-session-id"), null);
   const body = await listResponse.json();
   const tools = body.result.tools;
-  assert.deepEqual(tools.map(tool => tool.name).sort(), [NEWS_TOOL_NAME, WHOAMI_TOOL_NAME].sort());
+  assert.deepEqual(
+    tools.map(tool => tool.name).sort(),
+    [DECIDE_TOOL_NAME, NEWS_TOOL_NAME, WHOAMI_TOOL_NAME].sort(),
+  );
   for (const tool of tools) {
-    assert.equal(tool.annotations.readOnlyHint, READ_ONLY_ANNOTATIONS.readOnlyHint);
-    assert.equal(tool.annotations.destructiveHint, READ_ONLY_ANNOTATIONS.destructiveHint);
+    assert.equal(tool.annotations.destructiveHint, false);
+    if (tool.name === DECIDE_TOOL_NAME) {
+      assert.equal(tool.annotations.readOnlyHint, WRITE_ANNOTATIONS.readOnlyHint);
+      assert.equal(tool.annotations.idempotentHint, WRITE_ANNOTATIONS.idempotentHint);
+      assert.equal(tool.annotations.readOnlyHint, false);
+    } else {
+      assert.equal(tool.annotations.readOnlyHint, READ_ONLY_ANNOTATIONS.readOnlyHint);
+      assert.equal(tool.annotations.readOnlyHint, true);
+    }
   }
 
   const callResponse = await request({

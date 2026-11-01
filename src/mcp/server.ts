@@ -16,10 +16,17 @@ import {
 import {
   GUANLAN_MCP_SERVER_NAME,
   GUANLAN_MCP_SERVER_VERSION,
+  GUANLAN_WRITE_SCOPE,
   buildMcpProtectedResourceMetadata,
+  hasWriteScope,
   type McpConfig,
 } from "./config";
 import {
+  DECIDE_INPUT_SCHEMA,
+  DECIDE_OUTPUT_SCHEMA,
+  DECIDE_TOOL_DESCRIPTION,
+  DECIDE_TOOL_ERRORS,
+  DECIDE_TOOL_NAME,
   NEWS_INPUT_SCHEMA,
   NEWS_OUTPUT_SCHEMA,
   NEWS_TOOL_DESCRIPTION,
@@ -29,9 +36,17 @@ import {
   WHOAMI_OUTPUT_SCHEMA,
   WHOAMI_TOOL_DESCRIPTION,
   WHOAMI_TOOL_NAME,
+  WRITE_ANNOTATIONS,
+  renderDecisionMarkdown,
   renderNewsMarkdown,
+  type DecisionResult,
 } from "./capabilities";
-import { NewsReadError, type GuanlanNewsReader } from "./service";
+import {
+  NewsReadError,
+  type GuanlanNewsDecider,
+  type GuanlanNewsReader,
+  type NewsDecisionOutcome,
+} from "./service";
 
 const MAX_REQUEST_BODY_BYTES = 256 * 1024;
 
@@ -56,7 +71,62 @@ function newsToolErrorText(error: unknown): string {
   }
 }
 
-function buildMcpServer(authInfo: AuthInfo | undefined, reader: GuanlanNewsReader): McpServer {
+/**
+ * Maps a domain decision failure to an explicit tool error. Conflicts carry the
+ * bounded current decision (never a fingerprint or another subject's data) so a
+ * client can re-read and retry truthfully; an unknown article and an
+ * unauthorized source share one opaque `not_available` answer.
+ */
+function decisionErrorText(outcome: Extract<NewsDecisionOutcome, { ok: false }>): string {
+  const currentText = (current: {
+    url: string;
+    status: string;
+    version: number;
+    reason: string | null;
+    outcomeUrl: string | null;
+    decidedAt: string | null;
+  }): string => JSON.stringify({
+    url: current.url,
+    status: current.status,
+    version: current.version,
+    reason: current.reason,
+    outcomeUrl: current.outcomeUrl,
+    decidedAt: current.decidedAt,
+  });
+  switch (outcome.failure) {
+    case "version_conflict":
+      return `${DECIDE_TOOL_ERRORS.versionConflict}: expectedVersion did not match the stored decision; current state ${currentText(outcome.current)}. Re-read the article before deciding again.`;
+    case "operation_conflict":
+      return `${DECIDE_TOOL_ERRORS.operationConflict}: this operationId was already applied with different decision content; current state ${currentText(outcome.current)}. Use a new operationId for a new decision.`;
+    case "not_available":
+      return `${DECIDE_TOOL_ERRORS.notAvailable}: the article is not available for a decision under this verified identity.`;
+    case "principal_unavailable":
+      return `${DECIDE_TOOL_ERRORS.principalUnavailable}: the verified identity has no provisioned Cloud Guanlan space; retry after provisioning.`;
+    case "invalid_request":
+      return `${DECIDE_TOOL_ERRORS.invalidRequest}: the decision is outside the supported bounds (canonical http(s) URL, bounded reason/outcome link, no surrounding whitespace).`;
+  }
+}
+
+function decisionResultOf(outcome: Extract<NewsDecisionOutcome, { ok: true }>): DecisionResult {
+  return {
+    result: outcome.result,
+    state: {
+      url: outcome.state.url,
+      status: outcome.state.status,
+      version: outcome.state.version,
+      sourceId: outcome.state.sourceId,
+      reason: outcome.state.reason,
+      outcomeUrl: outcome.state.outcomeUrl,
+      decidedAt: outcome.state.decidedAt,
+    },
+  };
+}
+
+function buildMcpServer(
+  authInfo: AuthInfo | undefined,
+  reader: GuanlanNewsReader,
+  decider: GuanlanNewsDecider,
+): McpServer {
   const principal = principalFromAuthInfo(authInfo);
   const server = new McpServer(
     { name: GUANLAN_MCP_SERVER_NAME, version: GUANLAN_MCP_SERVER_VERSION },
@@ -120,6 +190,61 @@ function buildMcpServer(authInfo: AuthInfo | undefined, reader: GuanlanNewsReade
     },
   );
 
+  server.registerTool(
+    DECIDE_TOOL_NAME,
+    {
+      title: "Decide a Cloud Guanlan news item",
+      description: DECIDE_TOOL_DESCRIPTION,
+      inputSchema: DECIDE_INPUT_SCHEMA,
+      outputSchema: DECIDE_OUTPUT_SCHEMA,
+      annotations: WRITE_ANNOTATIONS,
+    },
+    async (args) => {
+      // Independent write authority. The bearer gate already proved the read
+      // scope; a read-only credential must still never reach the ledger.
+      if (!hasWriteScope(principal.scopes)) {
+        return {
+          content: [{
+            type: "text",
+            text: `${DECIDE_TOOL_ERRORS.forbidden}: this credential does not carry the ${GUANLAN_WRITE_SCOPE} scope; read access never grants state changes.`,
+          }],
+          isError: true,
+        };
+      }
+      try {
+        const outcome = await decider.decide(principal, {
+          url: args.url,
+          status: args.status,
+          expectedVersion: args.expectedVersion,
+          operationId: args.operationId,
+          reason: args.reason,
+          outcomeUrl: args.outcomeUrl,
+        });
+        if (outcome.ok) {
+          const structured = decisionResultOf(outcome);
+          return {
+            content: [{ type: "text", text: renderDecisionMarkdown(structured) }],
+            structuredContent: structured,
+          };
+        }
+        return {
+          content: [{ type: "text", text: decisionErrorText(outcome) }],
+          isError: true,
+        };
+      } catch {
+        // A ledger/D1 failure is an explicit storage error, never a conflict,
+        // a denial or an implied success.
+        return {
+          content: [{
+            type: "text",
+            text: `${DECIDE_TOOL_ERRORS.unavailable}: the decision ledger could not be written; retry later.`,
+          }],
+          isError: true,
+        };
+      }
+    },
+  );
+
   return server;
 }
 
@@ -170,6 +295,7 @@ export function createGuanlanMcp(
   config: McpConfig,
   verifier: GuanlanTokenVerifier,
   reader: GuanlanNewsReader,
+  decider: GuanlanNewsDecider,
 ): GuanlanMcpRuntime {
   const tokenVerifier: OAuthTokenVerifier = {
     async verifyAccessToken(token: string): Promise<AuthInfo> {
@@ -183,7 +309,7 @@ export function createGuanlanMcp(
     resourceMetadataUrl: config.metadataUrl,
   });
   const handler = createMcpHandler(
-    ({ authInfo }) => buildMcpServer(authInfo, reader),
+    ({ authInfo }) => buildMcpServer(authInfo, reader, decider),
     { legacy: "stateless", maxRequestBodySize: MAX_REQUEST_BODY_BYTES },
   );
   const metadata = buildMcpProtectedResourceMetadata(config);

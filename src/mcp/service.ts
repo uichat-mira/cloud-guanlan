@@ -1,6 +1,9 @@
 import { canonicalNewsUrl } from "../parser";
 import {
+  ConsumptionLedgerError,
   createD1ConsumptionLedger,
+  type ConsumptionStateView,
+  type ConsumptionStatus,
   type GuanlanConsumptionLedger,
 } from "../consumption";
 import {
@@ -468,7 +471,7 @@ const readChunkStates = async (
   ledger: GuanlanConsumptionLedger,
   subject: GuanlanSubject,
   rows: readonly NewsRow[],
-): Promise<Map<string, NewsStatus>> => {
+): Promise<Map<string, ConsumptionStateView>> => {
   let result: Awaited<ReturnType<GuanlanConsumptionLedger["read"]>>;
   try {
     result = await ledger.read(subject, { urls: rows.map(row => row.url) });
@@ -487,12 +490,12 @@ const readChunkStates = async (
     // contract anomaly, never an implied `unread`.
     throw storageFailure("the consumer state ledger could not answer for a stored news row");
   }
-  const states = new Map<string, NewsStatus>();
-  for (const state of result.states) states.set(state.url, state.status);
+  const states = new Map<string, ConsumptionStateView>();
+  for (const state of result.states) states.set(state.url, state);
   return states;
 };
 
-const toNewsItem = (row: NewsRow, status: NewsStatus): NewsItem => {
+const toNewsItem = (row: NewsRow, state: ConsumptionStateView): NewsItem => {
   if (row.url.length > NEWS_URL_MAX) {
     throw rowOutsideContract("a news url exceeds the explicit output bound");
   }
@@ -511,7 +514,9 @@ const toNewsItem = (row: NewsRow, status: NewsStatus): NewsItem => {
     sourceId: row.source_id,
     publishedAt: row.published_at,
     ingestedAt: row.ingested_at,
-    status,
+    status: state.status,
+    // GLN-010: the CAS precondition for a decision write. `unread` is 0.
+    stateVersion: state.version,
   };
 };
 
@@ -595,12 +600,12 @@ export function createAuthorizedNewsReader(dependencies: NewsReaderDependencies)
         for (; consumed < rows.length; consumed++) {
           const row = rows[consumed];
           lastScanned = { ingestedAt: row.ingested_at, url: row.url };
-          const status = states.get(row.url);
-          if (status === undefined) {
+          const state = states.get(row.url);
+          if (state === undefined) {
             throw rowOutsideContract("a stored news row has no answerable consumer state");
           }
-          if (!filters.statuses.includes(status)) continue;
-          items.push(toNewsItem(row, status));
+          if (!filters.statuses.includes(state.status)) continue;
+          items.push(toNewsItem(row, state));
           if (items.length === filters.limit) {
             consumed += 1;
             break;
@@ -646,4 +651,117 @@ export function createD1NewsReader(db: D1Database): GuanlanNewsReader {
     subscriptions,
     ledger: createD1ConsumptionLedger({ db, subscriptions }),
   });
+}
+
+/**
+ * GLN-010 · MCP consumption-state writeback.
+ *
+ * This is the thinnest possible adapter over the GLN-007 ledger: it maps the
+ * verified `GuanlanPrincipal` to the trusted subject, forwards the decision and
+ * folds the internal failure taxonomy into the MCP-facing one. It deliberately
+ * owns no SQL, no CAS rule and no second state table — the ledger remains the
+ * single write authority. The `guanlan.write` scope check lives in the MCP tool
+ * handler, because scopes are a credential concern and the domain ledger must
+ * stay usable by the future management API under its own authorization.
+ */
+
+export type NewsDecisionRequest = {
+  /** Canonical article URL; the GLN-007 canonicalization rule is applied once. */
+  readonly url: string;
+  readonly status: ConsumptionStatus;
+  readonly expectedVersion: number;
+  readonly operationId: string;
+  readonly reason?: string | null;
+  readonly outcomeUrl?: string | null;
+};
+
+/**
+ * A state that is known to be a stored decision (never the implied `unread`).
+ * The ledger only returns it with `version >= 1`, so the success path can expose
+ * it without a cast while conflicts may still carry an implied unread state.
+ */
+export type DecidedStateView = Omit<ConsumptionStateView, "status"> & {
+  readonly status: ConsumptionStatus;
+};
+
+/**
+ * MCP-facing decision outcome. `not_available` collapses "unknown article" and
+ * "source outside this consumer's effective set" so the tool cannot probe the
+ * global index or another account's subscriptions. Storage failures are thrown
+ * as `ConsumptionLedgerError` and are never folded into a business answer.
+ */
+export type NewsDecisionOutcome =
+  | { readonly ok: true; readonly result: "updated" | "replayed"; readonly state: DecidedStateView }
+  | {
+    readonly ok: false;
+    readonly failure: "version_conflict" | "operation_conflict";
+    readonly current: ConsumptionStateView;
+  }
+  | { readonly ok: false; readonly failure: "not_available" | "principal_unavailable" | "invalid_request" };
+
+export interface GuanlanNewsDecider {
+  decide(principal: GuanlanPrincipal, request: NewsDecisionRequest): Promise<NewsDecisionOutcome>;
+}
+
+export function createNewsDecider(ledger: GuanlanConsumptionLedger): GuanlanNewsDecider {
+  return {
+    async decide(principal: GuanlanPrincipal, request: NewsDecisionRequest): Promise<NewsDecisionOutcome> {
+      let subject: GuanlanSubject;
+      try {
+        subject = subjectFromPrincipal(principal);
+      } catch {
+        return { ok: false, failure: "principal_unavailable" };
+      }
+
+      const result = await ledger.write(subject, {
+        url: request.url,
+        status: request.status,
+        expectedVersion: request.expectedVersion,
+        operationId: request.operationId,
+        reason: request.reason ?? null,
+        outcomeUrl: request.outcomeUrl ?? null,
+      });
+
+      if (result.ok) {
+        // A stored decision is never `unread`; a ledger that says otherwise is a
+        // contract anomaly, not a decision result.
+        if (result.state.status === "unread") {
+          throw new ConsumptionLedgerError("storage_failure", "a stored decision reported an implied unread state");
+        }
+        return {
+          ok: true,
+          result: result.result,
+          state: { ...result.state, status: result.state.status },
+        };
+      }
+      switch (result.failure) {
+        case "version_conflict":
+        case "operation_conflict":
+          // The ledger always reports the current truth with a conflict; losing
+          // it would make the client unable to retry truthfully.
+          if (result.current === undefined) {
+            throw new ConsumptionLedgerError(
+              "storage_failure",
+              "a decision conflict was reported without current state",
+            );
+          }
+          return { ok: false, failure: result.failure, current: result.current };
+        case "news_not_found":
+        case "source_not_authorized":
+          return { ok: false, failure: "not_available" };
+        case "account_not_found":
+        case "consumer_not_found":
+        case "invalid_subject":
+          return { ok: false, failure: "principal_unavailable" };
+        case "invalid_request":
+          return { ok: false, failure: "invalid_request" };
+      }
+    },
+  };
+}
+
+/** D1 wiring for the MCP runtime. Constructing the decider performs no I/O. */
+export function createD1NewsDecider(db: D1Database): GuanlanNewsDecider {
+  const subscriptions = createD1SubscriptionReader(db);
+  return createNewsDecider(createD1ConsumptionLedger({ db, subscriptions }));
 }

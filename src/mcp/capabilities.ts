@@ -2,8 +2,21 @@ import * as z from "zod/v4";
 
 export const NEWS_TOOL_NAME = "guanlan_news_recent";
 export const WHOAMI_TOOL_NAME = "guanlan_whoami";
+export const DECIDE_TOOL_NAME = "guanlan_news_decide";
 export const NEWS_LIMIT_DEFAULT = 20;
 export const NEWS_LIMIT_MAX = 50;
+
+/**
+ * Writable decision states. `unread` is deliberately absent: it is the absence
+ * of a GLN-007 ledger row, never a value a client may write.
+ */
+export const DECIDE_STATUS_VALUES = ["pending", "adopted", "ignored"] as const;
+/** Mirrors the GLN-007 `last_operation_id` storage bound. */
+export const DECIDE_OPERATION_ID_MAX = 128;
+/** Mirrors the GLN-007 `reason` storage bound. */
+export const DECIDE_REASON_MAX = 500;
+/** Mirrors the GLN-007 `outcome_url` storage bound. */
+export const DECIDE_OUTCOME_URL_MAX = 2_048;
 
 /** Tool output is bounded before it enters MCP schemas. */
 export const NEWS_TITLE_MAX = 500;
@@ -39,6 +52,39 @@ export const READ_ONLY_ANNOTATIONS = {
   destructiveHint: false,
   idempotentHint: true,
   openWorldHint: false,
+} as const;
+
+/**
+ * The one write tool is explicitly not read-only. It is idempotent because the
+ * GLN-007 `operationId` replays an exact retry without a new version, and it is
+ * not destructive because a decision is a versioned, reversible row update.
+ */
+export const WRITE_ANNOTATIONS = {
+  readOnlyHint: false,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+export const DECIDE_TOOL_ERRORS = {
+  /** Credential verified, but it does not carry the independent write scope. */
+  forbidden: "guanlan_decision_forbidden",
+  /** `expectedVersion` no longer matches the stored decision. */
+  versionConflict: "guanlan_decision_version_conflict",
+  /** The same `operationId` was already used for different decision content. */
+  operationConflict: "guanlan_decision_operation_conflict",
+  /**
+   * The article is unknown or its source is not in this consumer's effective
+   * set. The two are deliberately indistinguishable so the tool cannot probe
+   * the global index or another account's subscriptions.
+   */
+  notAvailable: "guanlan_decision_not_available",
+  /** Verified credential without a provisioned Cloud Guanlan space. */
+  principalUnavailable: "guanlan_principal_unavailable",
+  /** Request outside the documented bounds (direct domain calls only). */
+  invalidRequest: "guanlan_decision_invalid",
+  /** Storage/contract failure: never reported as a conflict or a denial. */
+  unavailable: "guanlan_decision_unavailable",
 } as const;
 
 export const NEWS_TOOL_ERRORS = {
@@ -82,6 +128,11 @@ export const NEWS_ITEM_SCHEMA = z.object({
   publishedAt: z.string().nullable(),
   ingestedAt: z.string(),
   status: z.enum(NEWS_STATUS_VALUES),
+  /**
+   * CAS token for `guanlan_news_decide`: the stored GLN-007 decision version, or
+   * `0` when the article is unread (no ledger row). Reading never writes it.
+   */
+  stateVersion: z.number().int().min(0),
 });
 
 export const NEWS_OUTPUT_SCHEMA = z.object({
@@ -97,22 +148,72 @@ export const WHOAMI_OUTPUT_SCHEMA = z.object({
   scopes: z.array(z.string()),
 });
 
+/**
+ * The decision as stored by GLN-007. `version` is the ordering authority and the
+ * next `expectedVersion`; `decidedAt` is a server-assigned observation time, not
+ * a client clock and never an ordering input.
+ */
+export const DECISION_STATE_SCHEMA = z.object({
+  url: z.string(),
+  status: z.enum(DECIDE_STATUS_VALUES),
+  version: z.number().int().min(1),
+  sourceId: z.string().nullable(),
+  reason: z.string().nullable(),
+  outcomeUrl: z.string().nullable(),
+  decidedAt: z.string().nullable(),
+});
+
+export const DECIDE_OUTPUT_SCHEMA = z.object({
+  /** `updated` applied the decision; `replayed` recognised an exact retry. */
+  result: z.enum(["updated", "replayed"]),
+  state: DECISION_STATE_SCHEMA,
+});
+
+export const DECIDE_INPUT_SCHEMA = z.object({
+  url: z.string().min(1).max(NEWS_URL_MAX)
+    .describe("Canonical article URL exactly as returned by guanlan_news_recent (`id`/`url`). The collector's canonicalization is applied; a fragment never creates a new identity."),
+  status: z.enum(DECIDE_STATUS_VALUES)
+    .describe("Explicit decision: pending | adopted | ignored. `unread` is not writable; it is the absence of a decision."),
+  expectedVersion: z.number().int().min(0)
+    .describe("Compare-and-set precondition: the `stateVersion` last observed for this article. 0 means 'no decision yet'. A stale value is rejected, never silently overwritten."),
+  operationId: z.string().min(1).max(DECIDE_OPERATION_ID_MAX)
+    .describe("Idempotency key of this single decision (1-128 chars, no surrounding whitespace). Retry the same decision with the same id; a new decision needs a new id."),
+  reason: z.string().min(1).max(DECIDE_REASON_MAX).optional()
+    .describe("Optional bounded reason (1-500 chars, no surrounding whitespace)."),
+  outcomeUrl: z.string().min(1).max(DECIDE_OUTCOME_URL_MAX).optional()
+    .describe("Optional http(s) link to the result this decision produced."),
+});
+
 export type NewsItem = z.infer<typeof NEWS_ITEM_SCHEMA>;
 export type NewsPage = z.infer<typeof NEWS_OUTPUT_SCHEMA>;
 export type WhoamiResult = z.infer<typeof WHOAMI_OUTPUT_SCHEMA>;
+export type DecisionState = z.infer<typeof DECISION_STATE_SCHEMA>;
+export type DecisionResult = z.infer<typeof DECIDE_OUTPUT_SCHEMA>;
 
 export const NEWS_TOOL_DESCRIPTION =
   "Read a bounded page of news from the authenticated Cloud Guanlan index, restricted to the sources this verified " +
   "account and stable consumer may read. Identity comes only from the access token; arguments cannot select another " +
   "account or consumer. Without an explicit status filter only unread+pending items are returned; adopted/ignored are " +
   "history and must be requested. Results are ordered by ingested_at DESC, url ASC and paged with an opaque cursor that " +
-  "is bound to this identity and filter set. `keyword` is literal (not topic classification). Read-only: it never " +
-  "ingests news, writes consumer state or runs the collector; a storage or contract failure is an explicit error, " +
-  "never an empty page.";
+  "is bound to this identity and filter set. `keyword` is literal (not topic classification). Every item carries the " +
+  "current decision `stateVersion` (0 = unread) to use as the `expectedVersion` precondition of guanlan_news_decide. " +
+  "Read-only: it never ingests news, writes consumer state or runs the collector; a storage or contract failure is an " +
+  "explicit error, never an empty page.";
 
 export const WHOAMI_TOOL_DESCRIPTION =
   "Report the verified Cloud Auth account and stable consumer identity attached to this MCP credential. " +
   "Identity comes only from the access token; tool arguments cannot select another account or consumer.";
+
+export const DECIDE_TOOL_DESCRIPTION =
+  "Record one explicit consumption decision (pending | adopted | ignored) for one canonical news article, " +
+  "reusing the durable GLN-007 account × consumer ledger. The caller identity (account, consumer) comes only " +
+  "from the verified access token; arguments cannot select another account or consumer. Writing additionally " +
+  "requires the independent `guanlan.write` scope: a read-only credential can call the read tools but can never " +
+  "change state. Pass the `stateVersion` from guanlan_news_recent as `expectedVersion` (0 when unread) and a fresh " +
+  "`operationId` per decision; retrying the same decision with the same id is a safe `replayed` no-op, a stale " +
+  "version is a `version_conflict` that never overwrites newer state, and reusing an id for different content is an " +
+  "`operation_conflict`. Unknown articles and articles outside this consumer's authorized sources share one opaque " +
+  "`not_available` answer. Reading news never writes a decision.";
 
 export function renderNewsMarkdown(page: NewsPage): string {
   const lines = [
@@ -132,6 +233,7 @@ export function renderNewsMarkdown(page: NewsPage): string {
       "",
       `## ${item.title}`,
       `Status: ${item.status}`,
+      `State version: ${item.stateVersion}`,
       `Source: ${item.sourceId}`,
       `Published: ${item.publishedAt ?? "unknown"}`,
       `Ingested: ${item.ingestedAt}`,
@@ -141,4 +243,23 @@ export function renderNewsMarkdown(page: NewsPage): string {
     );
   }
   return lines.join("\n");
+}
+
+/**
+ * Success rendering for the write tool. The same `DecisionResult` object drives
+ * `structuredContent`, so Markdown and JSON can never disagree on the decision
+ * or on the version the client must use next.
+ */
+export function renderDecisionMarkdown(result: DecisionResult): string {
+  const state = result.state;
+  return [
+    `# Cloud Guanlan decision · ${result.result}`,
+    `Status: ${state.status}`,
+    `Version: ${state.version}`,
+    `URL: ${state.url}`,
+    `Source: ${state.sourceId ?? "unknown"}`,
+    `Reason: ${state.reason ?? "none"}`,
+    `Outcome: ${state.outcomeUrl ?? "none"}`,
+    `Decided at: ${state.decidedAt ?? "unknown"}`,
+  ].join("\n");
 }

@@ -112,10 +112,11 @@ test("real workerd modern MCP client discovers and calls read-only tools", async
       const listed = await client.listTools();
       assert.deepEqual(
         listed.tools.map(tool => tool.name).sort(),
-        ["guanlan_news_recent", "guanlan_whoami"],
+        ["guanlan_news_decide", "guanlan_news_recent", "guanlan_whoami"],
       );
       for (const tool of listed.tools) {
-        assert.equal(tool.annotations?.readOnlyHint, true);
+        const readOnly = tool.name !== "guanlan_news_decide";
+        assert.equal(tool.annotations?.readOnlyHint, readOnly, tool.name);
         assert.equal(tool.annotations?.destructiveHint, false);
       }
 
@@ -126,6 +127,8 @@ test("real workerd modern MCP client discovers and calls read-only tools", async
       assert.equal(news.isError, undefined);
       assert.equal(news.structuredContent.count, 1);
       assert.equal(news.structuredContent.items[0].title, "Example story");
+      // GLN-010: the read page carries the CAS token for a decision write.
+      assert.equal(news.structuredContent.items[0].stateVersion, 0);
 
       const invalid = await client.callTool({
         name: "guanlan_news_recent",
@@ -164,7 +167,7 @@ test("real workerd 2025-06-18 and 2025-11-25 initialize clients use the document
         assert.equal(client.getNegotiatedProtocolVersion(), version);
         assert.equal(transport.sessionId, undefined);
         const listed = await client.listTools();
-        assert.equal(listed.tools.length, 2);
+        assert.equal(listed.tools.length, 3);
         const news = await client.callTool({
           name: "guanlan_news_recent",
           arguments: { limit: 5 },
@@ -207,7 +210,7 @@ test("modern requests carry no session id and reject missing standard headers", 
     });
     assert.equal(ok.status, 200);
     assert.equal(ok.headers.get("mcp-session-id"), null);
-    assert.equal((await ok.json()).result.tools.length, 2);
+    assert.equal((await ok.json()).result.tools.length, 3);
 
     const missingHeaders = { ...headers };
     delete missingHeaders["Mcp-Method"];

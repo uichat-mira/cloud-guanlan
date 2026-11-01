@@ -6,6 +6,7 @@ export const MCP_TEST_TOKEN_ISSUER = "mira:cloud-auth"; // Signed Cloud Auth cre
 export const MCP_TEST_JWKS_URL = "https://auth.example.com/.well-known/jwks.json";
 export const MCP_TEST_AUDIENCE = "mira:cloud-guanlan";
 export const MCP_TEST_SCOPE = "guanlan.read";
+export const MCP_TEST_WRITE_SCOPE = "guanlan.write";
 export const MCP_TEST_FUTURE_EXP = 4_102_444_800; // 2100-01-01T00:00:00Z
 
 const base = (): GuanlanPrincipal => ({
@@ -17,6 +18,9 @@ const base = (): GuanlanPrincipal => ({
   audience: MCP_TEST_AUDIENCE,
 });
 
+/** Read + the independent write scope; never a superset of account authority. */
+const readWrite = (): GuanlanPrincipal => ({ ...base(), scopes: [MCP_TEST_SCOPE, MCP_TEST_WRITE_SCOPE] });
+
 export const FIXTURE_TOKENS: Record<string, GuanlanPrincipal> = {
   "fixture-consumer-1": base(),
   "fixture-consumer-2": { ...base(), consumerId: "consumer-2" },
@@ -24,6 +28,12 @@ export const FIXTURE_TOKENS: Record<string, GuanlanPrincipal> = {
   // Verified credentials whose Guanlan space is deliberately not provisioned.
   "fixture-unprovisioned": { ...base(), accountId: "account-z", consumerId: "consumer-z" },
   "fixture-empty-account": { ...base(), accountId: "account-empty", consumerId: "consumer-empty" },
+  // Read + guanlan.write: the only fixtures allowed to change consumption state.
+  "fixture-writer-1": readWrite(),
+  "fixture-writer-2": { ...readWrite(), consumerId: "consumer-2" },
+  "fixture-writer-account-b": { ...readWrite(), accountId: "account-b", consumerId: "consumer-b" },
+  "fixture-writer-unprovisioned": { ...readWrite(), accountId: "account-z", consumerId: "consumer-z" },
+  "fixture-writer-empty": { ...readWrite(), accountId: "account-empty", consumerId: "consumer-empty" },
   "fixture-wrong-issuer": { ...base(), issuer: "https://relay.example.com" },
   "fixture-shiyan-audience": { ...base(), audience: "https://api.shiyan.example.com" },
   "fixture-relay-audience": { ...base(), audience: "https://api.relay.example.com" },
