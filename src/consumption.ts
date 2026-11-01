@@ -484,6 +484,14 @@ export function createD1ConsumptionLedger(
         FROM poc_news AS news
         WHERE news.url = ?
           AND news.source_id IN (SELECT value FROM json_each(?))
+          -- A missing decision may only be inserted when the caller expects
+          -- version 0; existing rows remain eligible for the CAS update below.
+          AND (? = 0 OR EXISTS (
+            SELECT 1 FROM guanlan_consumer_news_states AS existing
+            WHERE existing.account_id = ?
+              AND existing.consumer_id = ?
+              AND existing.news_fingerprint = ?
+          ))
         ON CONFLICT (account_id, consumer_id, news_fingerprint) DO UPDATE SET
           source_id = excluded.source_id,
           status = excluded.status,
@@ -505,6 +513,10 @@ export function createD1ConsumptionLedger(
         valid.operationId,
         valid.canonicalUrl,
         JSON.stringify([...allowed]),
+        valid.expectedVersion,
+        subject.accountId,
+        subject.consumerId,
+        fingerprint,
         valid.expectedVersion,
         valid.operationId,
       );
@@ -554,7 +566,18 @@ export function createD1ConsumptionLedger(
       if (!allowed.has(newsRow.source_id)) {
         return { ok: false, failure: "source_not_authorized" };
       }
-      if (current === null) throw new ConsumptionLedgerError("storage_failure", UNCLASSIFIED);
+      if (current === null) {
+        // An expected previous version does not exist. Return a regular
+        // optimistic-concurrency conflict without creating an implicit row.
+        if (valid.expectedVersion !== 0) {
+          return {
+            ok: false,
+            failure: "version_conflict",
+            current: unreadView(valid.canonicalUrl, fingerprint, newsRow.source_id),
+          };
+        }
+        throw new ConsumptionLedgerError("storage_failure", UNCLASSIFIED);
+      }
 
       const state = viewOf(valid.canonicalUrl, current);
       if (current.last_operation_id === valid.operationId) {

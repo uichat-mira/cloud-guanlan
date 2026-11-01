@@ -269,6 +269,7 @@ test("the write path is one guarded upsert batch with CAS and idempotency inside
   // read-then-write race in JavaScript.
   assert.match(upsert.sql, /ON CONFLICT/i);
   assert.match(upsert.sql, /guanlan_consumer_news_states\.version = \?/);
+  assert.match(upsert.sql, /AND \(\? = 0 OR EXISTS \(/);
   assert.match(upsert.sql, /last_operation_id <> \?/);
   assert.match(upsert.sql, /json_each\(\?\)/);
   // The authorized source set handed to SQL comes from GLN-006.
@@ -315,6 +316,18 @@ test("write classification is deterministic for update, replay, operation confli
   assert.equal(operationConflict.failure, "operation_conflict");
   assert.equal(operationConflict.current.status, "adopted");
   assert.equal(operationConflict.current.version, 1);
+
+  // A stale expectation for an absent row must not be allowed to insert it.
+  const missingExpectedRow = await run(
+    [writeOk(0), readOk([]), news],
+    writeRequest({ expectedVersion: 7, operationId: "op-missing" }),
+  );
+  assert.equal(missingExpectedRow.ok, false);
+  assert.equal(missingExpectedRow.failure, "version_conflict");
+  assert.deepEqual(
+    [missingExpectedRow.current.status, missingExpectedRow.current.version],
+    ["unread", 0],
+  );
 
   // A stale expected version cannot overwrite a newer decision.
   const versionConflict = await run(

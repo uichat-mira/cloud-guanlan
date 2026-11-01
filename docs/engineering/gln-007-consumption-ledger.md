@@ -79,7 +79,7 @@ write(subject, {
 
 写路径是**一条**带条件的 `INSERT ... SELECT ... ON CONFLICT DO UPDATE ... WHERE` 语句，和「当前行」「新闻来源」两条 `SELECT` 一起放在同一个 D1 batch（事务）里：
 
-- 插入只在 `poc_news` 行存在且其 `source_id` 落在 GLN-006 有效集合（以 JSON 数组传入 `json_each`）时才可能发生；不存在「先查后写」的 JS 竞态窗口。
+- 插入只在 `poc_news` 行存在、其 `source_id` 落在 GLN-006 有效集合（以 JSON 数组传入 `json_each`）、**且账本无行时 `expectedVersion = 0`** 才可能发生；不存在「先查后写」的 JS 竞态窗口。无行却传非零版本时返回带 `unread/version=0` 的 `version_conflict`，不会误创建版本 1。
 - 更新同时要求 `version = expectedVersion` **且** `last_operation_id <> operationId`。因此：
   - 相同操作重复提交：第二次不写行、不增版本、不改时间戳，返回 `replayed`；
   - 较旧操作延迟到达：版本不匹配，返回 `version_conflict`，不覆盖新决定；

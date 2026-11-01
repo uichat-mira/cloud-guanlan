@@ -314,6 +314,44 @@ test("real D1: an exact retry replays without a new row, version or timestamp", 
   });
 });
 
+test("real D1: nonzero expectedVersion cannot create a missing ledger row", async () => {
+  await withD1(async db => {
+    await seed(db);
+    const identity = ["account-a", "research"];
+    const fingerprint = await fingerprintForCanonicalUrl(NEWS.shared1);
+
+    const stale = await write(db, identity, {
+      url: NEWS.shared1, status: "adopted", expectedVersion: 7, operationId: "op-absent-stale",
+    });
+    assert.equal(stale.ok, false);
+    assert.equal(stale.failure, "version_conflict");
+    assert.deepEqual([stale.current.status, stale.current.version], ["unread", 0]);
+    assert.deepEqual(
+      await rows(db, "SELECT version FROM guanlan_consumer_news_states WHERE news_fingerprint=?", fingerprint),
+      [],
+      "the wrong precondition must never create a decision",
+    );
+
+    const first = await write(db, identity, {
+      url: NEWS.shared1, status: "adopted", expectedVersion: 0, operationId: "op-absent-first",
+    });
+    assert.equal(first.ok, true);
+    assert.equal(first.result, "updated");
+    assert.equal(first.state.version, 1);
+
+    const outdated = await write(db, identity, {
+      url: NEWS.shared1, status: "ignored", expectedVersion: 7, operationId: "op-absent-later",
+    });
+    assert.equal(outdated.ok, false);
+    assert.equal(outdated.failure, "version_conflict");
+    assert.equal(outdated.current.version, 1);
+    assert.deepEqual(
+      await rows(db, "SELECT status,version FROM guanlan_consumer_news_states WHERE news_fingerprint=?", fingerprint),
+      [{ status: "adopted", version: 1 }],
+    );
+  });
+});
+
 test("real D1: stale and concurrent operations cannot overwrite a newer decision", async () => {
   await withD1(async db => {
     await seed(db);
