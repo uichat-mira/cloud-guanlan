@@ -1,7 +1,7 @@
 # GLN-008 · 新闻来源安全准入与受控采集边界
 
 > 任务契约：[Issue #15](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/15)。
-> 状态：代码、T1/T2/T3 测试与本文随 `feat/gln-008-source-safety` 的 Draft PR 提交到 `dev`；**未合并、未部署、未开启生产/Cron，也未对真实公网源做批量抓取**。本卡只建立 B1 的安全准入基础，不等于建成通用新闻源发现平台。
+> 交付范围：GLN-008 通过 [PR #19](https://github.com/uichat-mira/cloud-mcp-guanlan/pull/19) 向 `dev` 交付代码、T1/T2/T3 测试及本文；**未部署、未开启生产或隔离 Canary Cron，也未以本卡执行真实公网源批量抓取**。本卡只建立 B1 的安全准入基础，不等于建成通用新闻源发现平台。
 
 ## 1. 决策摘要
 
@@ -69,7 +69,7 @@
 
 ## 4. 批准白名单与变更流程
 
-- 清单在 `src/source-allowlist.ts`，当前三条均为 GLN-003（Issue #6）隔离 Canary 实际批准并抓取过的公共源：
+- 清单在 `src/source-allowlist.ts`；当前三条由维护者在 [GLN-008 Issue #15 裁决](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/15#issuecomment-6557145596) 中明确批准为**公共测试来源**，并非全部已由 GLN-003 Canary 实际抓取验收。GLN-003 记录了 HNRSS 和 Cloudflare Status 的真实运行，Cloudflare Changelog URL 主要见于手册示例命令：
   - `https://developers.cloudflare.com/changelog/rss/index.xml`
   - `https://hnrss.org/newest?count=5`
   - `https://www.cloudflarestatus.com/history.atom`

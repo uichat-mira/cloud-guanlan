@@ -17,9 +17,10 @@
  * address (DNS rebinding). Until the runtime can prove that property, unknown
  * hosts fail closed.
  *
- * Provenance: the entries below are the public feeds actually approved and
- * fetched by the isolated GLN-003 Cloudflare canary (Issue #6), recorded in
- * `docs/engineering/gln-003-cloudflare-canary.md`.
+ * Approval: maintainer decision for GLN-008 (Issue #15), 2026-11-01.
+ * The GLN-003 canary report documents real requests to HNRSS and Cloudflare
+ * Status; the Cloudflare Changelog URL appears in a test procedure example.
+ * These approvals do not assert that all three were previously fetched.
  */
 export type ApprovedFeed = {
   /**
@@ -38,16 +39,16 @@ export const APPROVED_PUBLIC_FEEDS: readonly ApprovedFeed[] = Object.freeze([
   Object.freeze({
     url: "https://developers.cloudflare.com/changelog/rss/index.xml",
     label: "Cloudflare changelog RSS",
-    approvedIn: "GLN-003 (Issue #6) isolated canary source",
+    approvedIn: "GLN-008 (Issue #15) maintainer-approved test feed, 2026-11-01",
   }),
   Object.freeze({
     url: "https://hnrss.org/newest?count=5",
     label: "Hacker News RSS (5 items)",
-    approvedIn: "GLN-003 (Issue #6) isolated canary source",
+    approvedIn: "GLN-008 (Issue #15) maintainer-approved test feed, 2026-11-01",
   }),
   Object.freeze({
     url: "https://www.cloudflarestatus.com/history.atom",
     label: "Cloudflare status Atom",
-    approvedIn: "GLN-003 (Issue #6) isolated canary source",
+    approvedIn: "GLN-008 (Issue #15) maintainer-approved test feed, 2026-11-01",
   }),
 ]);

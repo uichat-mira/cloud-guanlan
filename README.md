@@ -47,7 +47,7 @@ Desktop 的本地 NewsHub 已有采集、订阅、SQLite 缓存和检索实现�
 
 ## 项目状态与工程协作
 
-[GLN-003](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6) 是已完成的隔离运行研究，结论仍是不批准依赖 Free 10ms CPU 的长期 Cron；相关 Canary 保留且调度关闭。[GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 的远程 MCP 协议代码已并入 `dev`，但不代表真实 Cloud Auth 令牌或客户端已经接通。[GLN-005](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11) 的多用户持久化模型也已进入 `dev`。[GLN-008](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/15) 的来源安全准入（批准白名单 + fail-closed URL 策略 + 受控登记）以 Draft PR 交付，未合并、未部署、未开启 Cron。
+[GLN-003](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/6) 是已完成的隔离运行研究，结论仍是不批准依赖 Free 10ms CPU 的长期 Cron；相关 Canary 保留且调度关闭。[GLN-004](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/8) 的远程 MCP 协议代码已并入 `dev`，但不代表真实 Cloud Auth 令牌或客户端已经接通。[GLN-005](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/11) 的多用户持久化模型也已进入 `dev`。[GLN-008](https://github.com/uichat-mira/cloud-mcp-guanlan/issues/15) 的来源安全准入（精确测试 URL 白名单 + fail-closed URL 策略 + 受控登记）由 [PR #19](https://github.com/uichat-mira/cloud-mcp-guanlan/pull/19) 交付 `dev`；未部署、未开启 Cron，也未证明真实 DNS 出站防护或 Free CPU 长期余量。
 
 - [仓库工程约束](AGENTS.md)
 - [GLN-008 来源安全准入与受控采集边界](docs/engineering/gln-008-source-safety.md)：接受/拒绝矩阵、Workers 能力限制与剩余安全边界。
