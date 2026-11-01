@@ -7,6 +7,18 @@ import {rss} from "./fixtures.mjs";
 const now=Date.now();
 const overdue=new Date(now-60_000).toISOString();
 const CRON="*/5 * * * *";
+// GLN-008: collection is restricted to maintainer-approved public feeds. The
+// three T3 sources map to the three approved URLs so the real workerd path is
+// exercised instead of bypassing the source policy.
+const SOURCE_URLS={
+  "feed-a":"https://www.cloudflarestatus.com/history.atom",
+  "feed-b":"https://developers.cloudflare.com/changelog/rss/index.xml",
+  "feed-c":"https://hnrss.org/newest?count=5"
+};
+const feedIdFor=request=>{
+  const href=new URL(request.url).href;
+  return Object.keys(SOURCE_URLS).find(id=>SOURCE_URLS[id]===href)??null;
+};
 async function withWorker(fetcher,run){
   const mf=new Miniflare({
     modules:true,scriptPath:"dist/worker.mjs",compatibilityDate:"2026-08-06",cf:false,
@@ -24,7 +36,7 @@ async function withWorker(fetcher,run){
 }
 async function seed(db,id="feed-a",due=overdue,hours=1){
   await db.prepare("INSERT INTO poc_sources (id,url,interval_hours,due_at) VALUES (?,?,?,?)")
-    .bind(id,"https://example.com/"+id+".xml",hours,due).run();
+    .bind(id,SOURCE_URLS[id],hours,due).run();
 }
 const tick=(worker,ts=now)=>worker.scheduled({cron:CRON,scheduledTime:ts});
 const count=db=>db.prepare("SELECT count(*) AS n FROM poc_news").first();
@@ -44,22 +56,22 @@ test("parallel Cron events cannot claim the same source twice",async()=>{
 });
 test("bounded serial batch leaves third due source for next tick; GET has no side effects",async()=>{
   const calls=[];
-  await withWorker(async req=>{calls.push(new URL(req.url).pathname);return new Response(rss(1))},async({mf,db,worker})=>{
+  await withWorker(async req=>{calls.push(feedIdFor(req));return new Response(rss(1))},async({mf,db,worker})=>{
     for(const id of ["feed-a","feed-b","feed-c"]) await seed(db,id);
     assert.equal((await tick(worker)).outcome,"ok");
-    assert.deepEqual(calls,["/feed-a.xml","/feed-b.xml"]);
+    assert.deepEqual(calls,["feed-a","feed-b"]);
     assert.equal((await db.prepare("SELECT count(*) AS n FROM poc_sources WHERE last_status='succeeded'").first()).n,2);
     assert.equal((await mf.dispatchFetch("https://example.com/health")).status,200);
     assert.equal(calls.length,2);
     assert.equal((await tick(worker,now+300_000)).outcome,"ok");
-    assert.deepEqual(calls,["/feed-a.xml","/feed-b.xml","/feed-c.xml"]);
+    assert.deepEqual(calls,["feed-a","feed-b","feed-c"]);
     assert.equal((await db.prepare("SELECT count(*) AS n FROM poc_sources WHERE last_status='succeeded'").first()).n,3);
   });
 });
 test("upstream failure backs off while other source progresses; successful retry resets failure counter",async()=>{
   let failures=0;
   await withWorker(async req=>{
-    if(new URL(req.url).pathname==="/feed-a.xml" && failures++===0)return new Response("offline",{status:503});
+    if(feedIdFor(req)==="feed-a" && failures++===0)return new Response("offline",{status:503});
     return new Response(rss(1));
   },async({db,worker})=>{
     await seed(db,"feed-a"); await seed(db,"feed-b");
@@ -134,8 +146,8 @@ test("D1 commit failure is not misclassified as feed HTTP failure; transaction r
 });
 test("oversized feed and malformed response fail safely, preserving next eligible source",async()=>{
   await withWorker(async req=>{
-    if(req.url.includes("feed-a"))return new Response("too large",{headers:{"content-length":"190000"}});
-    if(req.url.includes("feed-b"))return new Response("<html>not a feed</html>");
+    if(feedIdFor(req)==="feed-a")return new Response("too large",{headers:{"content-length":"190000"}});
+    if(feedIdFor(req)==="feed-b")return new Response("<html>not a feed</html>");
     return new Response(rss(1));
   },async({db,worker})=>{
     for(const id of ["feed-a","feed-b","feed-c"])await seed(db,id);

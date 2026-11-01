@@ -5,6 +5,9 @@ import { Miniflare } from "miniflare";
 import { rss } from "./fixtures.mjs";
 
 const TEST_ID="00000000-0000-4000-8000-000000000001";
+// GLN-008: the collector only fetches maintainer-approved public feeds, so the
+// T3 fixture uses a real approved source URL instead of an arbitrary host.
+const APPROVED_FEED="https://developers.cloudflare.com/changelog/rss/index.xml";
 async function withWorker(fetcher, run){
  const mf=new Miniflare({
    modules:true, scriptPath:"dist/worker.mjs",compatibilityDate:"2026-08-06",cf:false,
@@ -24,14 +27,14 @@ async function withWorker(fetcher, run){
    await run({mf,db});
  }finally{await mf.dispose();}
 }
-async function seed(db,url="https://example.com/rss.xml",id="feed1"){
+async function seed(db,url=APPROVED_FEED,id="feed1"){
  await db.prepare("INSERT INTO poc_sources (id,url,interval_hours,due_at) VALUES (?,?,?,?)")
    .bind(id,url,1,"2026-10-31T00:00:00.000Z").run();
 }
 const now=Date.parse("2026-10-31T01:00:00.000Z");
 test("real workerd scheduled handler writes into local D1 and is repeatable",async()=>{
  let requests=0;
- await withWorker(async req=>{requests++;assert.equal(new URL(req.url).pathname,"/rss.xml");return new Response(rss(3),{headers:{"content-type":"application/rss+xml"}})},async({mf,db})=>{
+ await withWorker(async req=>{requests++;assert.equal(req.url,APPROVED_FEED);return new Response(rss(3),{headers:{"content-type":"application/rss+xml"}})},async({mf,db})=>{
    await seed(db);
    const worker=await mf.getWorker();
    const response=await mf.dispatchFetch("https://example.com/health");
